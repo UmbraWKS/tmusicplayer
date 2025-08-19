@@ -5,6 +5,7 @@
 #include <curl/curl.h>
 #include <curl/easy.h>
 #include <curses.h>
+#include <locale.h>
 #include <ncurses.h>
 #include <pthread.h>
 #include <stdbool.h>
@@ -27,6 +28,7 @@ void free_server();
 void init_curl();
 
 int main() {
+  setlocale(LC_ALL, "");
   // initializing program data
   init_curl();
   srand(time(NULL));
