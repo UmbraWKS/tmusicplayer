@@ -29,6 +29,7 @@ void init_curl();
 
 int main() {
   setlocale(LC_ALL, "");
+  setlocale(LC_NUMERIC, "C");
   // initializing program data
   init_curl();
   srand(time(NULL));
