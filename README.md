@@ -27,11 +27,20 @@
   {
 	  "host":"http://subsonic.server",
 	  "name":"username",
-	  "password":"super-secure-password"
+	  "password":"plain-text-password"
   }
 ```
   
-  Another file will be created automatically and it will contain the app settings, such as volume.
+  Another file will be created automatically and it will contain the app settings.
+
+### Example
+
+```json 
+  {
+    "volume": 50,
+    "playlist-loop": false
+  }
+```
 
 ## WARNING
 
@@ -39,9 +48,10 @@
 
 ## Features
   
-- Browsing in the order Artist->Album->Songs
+- Browsing in the order Artist->Album->Songs and queue visualization
 - Volume control
-- Auto-queue: plays selected song and the following songs from the album
+- Songs skip
+- Queue control: add/remove songs, add albums
 
 ## Controls
 
@@ -52,9 +62,14 @@
 | `ESC`           | Go back in navigation          |
 | `ENTER`         | Select                         |
 | `↑` / `↓`         | Move in the menu               |
-| `TAB`           | Switch focus in top bar        |
+| `1`/`2`/`3`         | Switch TAB in top bar          |
 | `q`             | Quit                           |
+| `l`             | Toggle queue loop              |
+| `d`             | Remove song from queue         |
+| `k`             | Skip current song              |
+| `a`             | Add Album or Song to queue     |
 
 
 ## Screenshot
   ![TMusicPlayer screenshot](images/browse.png)
+  ![TMusicPlayer screenshot](images/queue.png)

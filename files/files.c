@@ -1,4 +1,6 @@
 #include "files.h"
+#include <json-c/json_object.h>
+#include <json-c/json_types.h>
 
 const char *config_file;
 const char *settings_file;
@@ -30,11 +32,13 @@ int read_settings(Settings *settings) {
   if (obj == NULL)
     return -1;
 
-  json_object *volume;
+  json_object *volume, *playlist_loop;
 
   json_object_object_get_ex(obj, "volume", &volume);
+  json_object_object_get_ex(obj, "playlist-loop", &playlist_loop);
 
   settings->volume = json_object_get_int(volume);
+  settings->loop = json_object_get_boolean(playlist_loop);
 
   json_object_put(obj);
 
@@ -61,10 +65,9 @@ int app_path_validation() {
   if (res >= sizeof(settings_path))
     return -1;
 
-  if (!file_exists(settings_path)) {
-    if (create_settings_file(settings_path) == 0)
-      return -1; // error creating file
-  }
+  if (!file_exists(settings_path))
+    create_settings_file(settings_path);
+
   settings_file = strdup(settings_path);
 
   res = snprintf(config_path, sizeof(config_path), "%s/%s", data_path,
@@ -102,9 +105,10 @@ bool file_exists(const char *path) {
   return (stat(path, &st) == 0 && S_ISREG(st.st_mode));
 }
 
-int create_settings_file(const char *path) {
+void create_settings_file(const char *path) {
   json_object *obj = json_object_new_object();
   json_object_object_add(obj, "volume", json_object_new_int(50));
+  json_object_object_add(obj, "playlist-loop", json_object_new_boolean(false));
   json_object_to_file(path, obj);
   json_object_put(obj);
 }
@@ -117,6 +121,9 @@ void save_settings(Settings *settings) {
   else
     json_object_object_add(obj, "volume",
                            json_object_new_int(50)); // default to 50
+
+  json_object_object_add(obj, "playlist-loop",
+                         json_object_new_boolean(settings->loop));
 
   json_object_to_file(settings_file, obj);
   json_object_put(obj);
@@ -441,6 +448,9 @@ SongsDirectory *parse_songs(const char *xml_string) {
           xmlFree(tmp);
 
           dir->songs = add_song_to_list(dir->songs, song);
+          // since add_song_to_list duplicates the song i will free the song
+          // here
+          free(song);
         }
       }
     }

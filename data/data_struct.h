@@ -99,13 +99,16 @@ typedef struct MusicLibrary {
 typedef struct Queue {
   int queue_size; // number of songs
   Song *songs;    // list of songs in the queue
-  Album *album;   // the album it refers to
-  Artist *artist; // the artist
 } Queue;
 
 #endif
 
+/* these functions add the item at the end of the list*/
 MusicFolder *add_folder_to_list(MusicFolder *head, MusicFolder *node);
 Artist *add_artist_to_list(Artist *head, Artist *artist);
 Album *add_album_to_list(Album *head, Album *album);
 Song *add_song_to_list(Song *head, Song *song);
+// removes the song matching the id from the list and returns the new list
+Song *remove_song_from_list(Song *head, const char *id);
+// counts the songs in the list
+int count_songs(Song *head);

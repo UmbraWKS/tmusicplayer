@@ -22,6 +22,9 @@ extern const char *settings_file;
 
 typedef struct Settings {
   int volume;
+  // queue loop
+  // saved to false by default when file is created
+  bool loop;
 } Settings;
 #endif
 
@@ -41,7 +44,7 @@ int get_actual_path(char *path, size_t path_size);
 bool folder_exists(const char *path);
 bool create_folder(const char *path);
 bool file_exists(const char *path);
-int create_settings_file(const char *path);
+void create_settings_file(const char *path);
 void save_settings(Settings *settings);
 
 MusicFolder *parse_music_folders(const char *xml_string);

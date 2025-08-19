@@ -7,9 +7,9 @@
 
 #include "mpv_audio.h"
 
-// gets passed the index of the song in the queue that is playing
+// gets passed the id of the song in the queue that is playing
 // called every time the song changes
-void currenyly_playing(int index);
+void currently_playing(const char *id);
 
 // gets passed the playback status (PAUSED, PLAYING, IDLE)
 // called only when one of these is changes, it's for ui only

@@ -1,5 +1,6 @@
 #include "data_struct.h"
-#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 Artist *add_artist_to_list(Artist *head, Artist *artist) {
   if (head == NULL)
@@ -26,14 +27,21 @@ Album *add_album_to_list(Album *head, Album *album) {
 }
 
 Song *add_song_to_list(Song *head, Song *song) {
+  Song *new_song = malloc(sizeof(Song));
+  if (!new_song)
+    return head;
+
+  *new_song = *song;
+  new_song->next = NULL;
+
   if (head == NULL)
-    return song;
+    return new_song;
 
   Song *temp = head;
   while (temp->next != NULL)
     temp = temp->next;
 
-  temp->next = song;
+  temp->next = new_song;
   return head;
 }
 
@@ -47,4 +55,44 @@ MusicFolder *add_folder_to_list(MusicFolder *head, MusicFolder *node) {
 
   temp->next = node;
   return head;
+}
+
+Song *remove_song_from_list(Song *head, const char *id) {
+  if (head == NULL)
+    return NULL;
+
+  Song *tmp = NULL;
+  if (strcmp(head->id, id) == 0) {
+    tmp = head;
+    head = head->next;
+    free(tmp);
+  } else {
+    Song *prev = NULL;
+    Song *curr = head;
+
+    while (curr && strcmp(curr->id, id) != 0) {
+      prev = curr;
+      curr = curr->next;
+    }
+    if (curr) {
+      tmp = curr;
+      prev->next = curr->next;
+      free(tmp);
+    }
+  }
+
+  return head;
+}
+
+int count_songs(Song *head) {
+  if (head == NULL)
+    return 0;
+
+  Song *tmp = head;
+  int count = 0;
+  while (tmp != NULL) {
+    tmp = tmp->next;
+    count++;
+  }
+  return count;
 }

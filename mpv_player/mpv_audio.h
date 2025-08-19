@@ -37,3 +37,7 @@ void volume_up();
 void volume_down();
 // volume limited to 0-100
 void set_volume(int volume);
+// skips to the next song
+void skip_song();
+
+void play_song(char *id);

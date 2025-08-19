@@ -17,9 +17,10 @@ mpv_status_t status = MPV_STATUS_IDLE;
 bool status_changed = false;
 // variable holding the time passed in seconds of the song playing
 int time_passed = -1;
+// id of the song playing in the queue
+char *song_id;
 
 void *play_queue(void *arg) {
-  Queue *queue = (Queue *)arg;
   pthread_mutex_lock(&mpv_mutex);
   status = MPV_STATUS_INITIALIZING;
   ctx = mpv_create();
@@ -36,28 +37,18 @@ void *play_queue(void *arg) {
   check_error(mpv_set_option_string(ctx, "input-vo-keyboard", "no"));
   check_error(mpv_set_option_string(ctx, "input-terminal", "no"));
   check_error(mpv_set_option_string(ctx, "vo", "null"));
-  // enabling playlist mode in mpv
-  check_error(mpv_set_option_string(ctx, "keep-open", "yes"));
-  check_error(mpv_set_option_string(ctx, "idle", "yes"));
   // initializing the player
   check_error(mpv_initialize(ctx));
   status = MPV_STATUS_READY;
   pthread_mutex_unlock(&mpv_mutex);
-  // loading songs into playlist
-  Song *current_song = queue->songs;
-  char *params, *url;
-  for (int i = 0; i < queue->queue_size; i++) {
-    const char *mode = (i == 0) ? "replace" : "append";
-    params = song_params(current_song->id);
-    url = url_formatter(server, "stream", params);
-    const char *cmd[] = {"loadfile", url, mode, NULL};
-    check_error(mpv_command(ctx, cmd));
-    current_song = current_song->next;
-    free(url);
-    free(params);
+  // manually starting the playback of the first song
+  // TODO: append the next song and after the end of what is playing check if it
+  // changed in the queue and handle it appropriately
+  if (queue->songs) {
+    play_song(queue->songs->id);
+    song_id = queue->songs->id;
+    currently_playing(queue->songs->id);
   }
-  // listening to property changes in the playslist
-  mpv_observe_property(ctx, 0, "playlist-pos", MPV_FORMAT_INT64);
   // listening to time advancement in song
   mpv_observe_property(ctx, 1, "time-pos", MPV_FORMAT_DOUBLE);
   // player loop
@@ -66,19 +57,41 @@ void *play_queue(void *arg) {
 
     if (event->event_id == MPV_EVENT_SHUTDOWN) {
       break;
+      // when a song ends playing
+    } else if (event->event_id == MPV_EVENT_END_FILE) {
+      // finding the song in the list
+      Song *tmp = queue->songs;
+      while (tmp && strcmp(tmp->id, song_id) != 0)
+        tmp = tmp->next;
+      // playing
+      if (tmp && tmp->next) {
+        tmp = tmp->next;
+        play_song(tmp->id);
+        // updating UI
+        currently_playing(tmp->id);
+        // updating currently playing song
+        song_id = tmp->id;
+
+      } else {
+        // if the loop is enabled playback starts back
+        if (settings->loop && queue->songs) {
+          play_song(queue->songs->id);
+          currently_playing(queue->songs->id);
+          song_id = queue->songs->id;
+          // playlist finished
+        } else {
+          status = MPV_STATUS_IDLE;
+          status_changed = true;
+        }
+      }
+
     } else if (event->event_id == MPV_EVENT_PLAYBACK_RESTART) {
       // playback has started
       status = MPV_STATUS_PLAYING;
       status_changed = true;
     } else if (event->event_id == MPV_EVENT_PROPERTY_CHANGE) {
       mpv_event_property *prop = (mpv_event_property *)event->data;
-      if (strcmp(prop->name, "playlist-pos") == 0) {
-        if (prop->format == MPV_FORMAT_INT64 && prop->data) {
-          int64_t play_pos = *(int64_t *)prop->data;
-          currenyly_playing((int)play_pos);
-        }
-      } else if (strcmp(prop->name, "time-pos") == 0 &&
-                 status == MPV_STATUS_PLAYING) {
+      if (strcmp(prop->name, "time-pos") == 0 && status == MPV_STATUS_PLAYING) {
         if (prop->format == MPV_FORMAT_DOUBLE && prop->data) {
           double time_stamp = *(double *)prop->data;
           // i only care about seconds, so i am limiting function call to second
@@ -104,6 +117,17 @@ void *play_queue(void *arg) {
   playback_status(status);
   pthread_mutex_unlock(&mpv_mutex);
   return NULL;
+}
+
+void play_song(char *id) {
+  char *params = song_params(id);
+  char *url = url_formatter(server, "stream", params);
+  const char *cmd[] = {"loadfile", url, NULL};
+  pthread_mutex_lock(&mpv_mutex);
+  check_error(mpv_command(ctx, cmd));
+  pthread_mutex_unlock(&mpv_mutex);
+  free(params);
+  free(url);
 }
 
 mpv_status_t get_mpv_status() {
@@ -191,6 +215,16 @@ void shutdown_player() {
     mpv_command_async(ctx, 0, cmd);
   }
   // no need to set ctx to NULL, it happens when exiting the main loop
+  pthread_mutex_unlock(&mpv_mutex);
+}
+
+void skip_song() {
+  pthread_mutex_lock(&mpv_mutex);
+  if (ctx) {
+    // making it go to 100%
+    const char *cmd[] = {"seek", "100", "absolute-percent", NULL};
+    mpv_command_async(ctx, 0, cmd);
+  }
   pthread_mutex_unlock(&mpv_mutex);
 }
 

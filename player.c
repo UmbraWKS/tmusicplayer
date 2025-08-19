@@ -12,11 +12,13 @@
 #include <unistd.h>
 
 APIResponse response;
-// declaration of the variables in program_data
+// declaration of the global variables in program_data
 MusicLibrary *library = NULL;
 Server *server = NULL;
 Settings *settings = NULL;
 bool program_exit = false;
+Queue *queue;
+
 CURL *curl = NULL;
 
 bool get_data_from_server();
@@ -32,7 +34,7 @@ int main() {
   int result; // functions return
   result = app_path_validation();
   if (result == -1) {
-    error_window("Error initializing storage paths and files");
+    error_window("encountered error initializing storage paths and files");
     return -1;
   } else if (result == -2) {
     error_window("The Config file doesnt exist, can't connect to the server");
@@ -41,12 +43,13 @@ int main() {
   server = malloc(sizeof(Server));
   result = read_server_data(server);
   if (result == -1) {
-    error_window("ERROR: check config file formatting");
+    error_window("check config file");
     return -1;
   }
 
-  settings = malloc(sizeof(Settings));
+  settings = calloc(1, sizeof(Settings));
   read_settings(settings);
+  printf("LOOP: %b", settings->loop);
   if (!get_data_from_server()) {
     curl_global_cleanup();
     endwin();
@@ -143,7 +146,7 @@ bool get_data_from_server() {
     // and for every Album i get it's SongsDirectory filled with Songs
     Album *al = a->albums_dir->albums;
     al->songs_dir = NULL;
-    for (int i = 0; i < a->albums_dir->album_count; i++) {
+    for (int i = 0; i < a->albums_dir->album_count && al != NULL; i++) {
       call_param = malloc(strlen("&id=") + strlen(al->id) + 1);
       sprintf(call_param, "&id=%s", al->id);
       url = url_formatter(server, "getMusicDirectory", call_param);

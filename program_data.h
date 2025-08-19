@@ -4,7 +4,7 @@
 #ifndef PROGRAM_DATA
 #define PROGRAM_DATA
 
-#define APP_VERSION 0.1
+#define APP_VERSION 0.2
 #endif
 
 #include "data/data_struct.h"
@@ -14,3 +14,5 @@ extern bool program_exit;
 extern MusicLibrary *library;
 extern Server *server;
 extern Settings *settings;
+// only one queue is really needed
+extern Queue *queue;
