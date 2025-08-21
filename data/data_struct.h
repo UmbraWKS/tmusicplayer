@@ -112,3 +112,5 @@ Song *add_song_to_list(Song *head, Song *song);
 Song *remove_song_from_list(Song *head, const char *id);
 // counts the songs in the list
 int count_songs(Song *head);
+
+void free_song_list(Song *head);

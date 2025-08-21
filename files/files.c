@@ -154,7 +154,7 @@ MusicFolder *parse_music_folders(const char *xml_string) {
       for (folder_node = node->children; folder_node;
            folder_node = folder_node->next) {
         if (xmlStrcmp(folder_node->name, (const xmlChar *)"musicFolder") == 0) {
-          MusicFolder *folder_dir = malloc(sizeof(MusicFolder));
+          MusicFolder *folder_dir = calloc(1, sizeof(MusicFolder));
           folder_dir->next = NULL;
           xmlChar *tmp;
 
@@ -208,7 +208,7 @@ Artist *parse_artists(const char *xml_string) {
           for (artist_node = index_node->children; artist_node;
                artist_node = artist_node->next) {
             if (xmlStrcmp(artist_node->name, (const xmlChar *)"artist") == 0) {
-              Artist *a = malloc(sizeof(Artist));
+              Artist *a = calloc(1, sizeof(Artist));
               a->next = NULL;
               a->albums_dir = NULL;
 
@@ -252,7 +252,7 @@ AlbumsDirectory *parse_albums(const char *xml_string) {
   */
   xmlDocPtr doc;
   xmlNodePtr root, dir_node, child_node;
-  AlbumsDirectory *dir = malloc(sizeof(AlbumsDirectory));
+  AlbumsDirectory *dir = calloc(1, sizeof(AlbumsDirectory));
   dir->next = NULL;
   dir->albums = NULL;
 
@@ -285,7 +285,7 @@ AlbumsDirectory *parse_albums(const char *xml_string) {
       for (child_node = dir_node->children; child_node;
            child_node = child_node->next) {
         if (xmlStrcmp(child_node->name, (const xmlChar *)"child") == 0) {
-          Album *album = malloc(sizeof(Album));
+          Album *album = calloc(1, sizeof(Album));
           album->next = NULL;
           album->songs_dir = NULL;
 
@@ -348,7 +348,7 @@ SongsDirectory *parse_songs(const char *xml_string) {
   */
   xmlDocPtr doc;
   xmlNodePtr root, dir_node, child;
-  SongsDirectory *dir = malloc(sizeof(SongsDirectory));
+  SongsDirectory *dir = calloc(1, sizeof(SongsDirectory));
   dir->next = NULL;
   dir->songs = NULL;
 
@@ -392,7 +392,7 @@ SongsDirectory *parse_songs(const char *xml_string) {
 
       for (child = dir_node->children; child; child = child->next) {
         if (xmlStrcmp(child->name, (const xmlChar *)"child") == 0) {
-          Song *song = malloc(sizeof(Song));
+          Song *song = calloc(1, sizeof(Song));
           song->next = NULL;
 
           tmp = xmlGetProp(child, (const xmlChar *)"id");

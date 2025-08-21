@@ -70,6 +70,6 @@
 | `a`             | Add Album or Song to queue     |
 
 
-## Screenshot
+## Screenshots
   ![TMusicPlayer screenshot](images/browse.png)
   ![TMusicPlayer screenshot](images/queue.png)

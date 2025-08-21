@@ -176,7 +176,7 @@ void handle_input(int ch) {
       pthread_join(mpv_thread, NULL);
     }
 
-    free(queue->songs);
+    free_song_list(queue->songs);
     free(manager);
     endwin();
     return;
@@ -231,9 +231,6 @@ void handle_input(int ch) {
       manager->current_content_window = 0;
       create_content_windows();
       populate_queue_window();
-
-      // if a song is playing adjusting the cursor position
-      set_cursor_on_song_menu(&manager->panels[0], queue->songs, song_playing);
 
       delwin(manager->top_bar);
       manager->top_bar = create_top_bar();
@@ -476,6 +473,9 @@ void populate_queue_window() {
   }
 
   set_menu_attributes(&manager->panels[0]);
+
+  // if a song is playing adjusting the cursor position
+  set_cursor_on_song_menu(&manager->panels[0], queue->songs, song_playing);
 }
 
 void set_menu_attributes(content_panel_t *panel) {
@@ -519,6 +519,7 @@ void enter_input_handling() {
     for (int i = 0; i < index_song; i++)
       s = s->next;
 
+    free_song_list(queue->songs);
     queue->songs = NULL;
     int i = 0;
     while (s != NULL) {

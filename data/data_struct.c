@@ -96,3 +96,11 @@ int count_songs(Song *head) {
   }
   return count;
 }
+
+void free_song_list(Song *head) {
+  while (head) {
+    Song *tmp = head;
+    head = head->next;
+    free(tmp);
+  }
+}
