@@ -51,3 +51,6 @@ MusicFolder *parse_music_folders(const char *xml_string);
 Artist *parse_artists(const char *xml_string);
 AlbumsDirectory *parse_albums(const char *xml_string);
 SongsDirectory *parse_songs(const char *xml_string);
+// since ITEMS can't handle non ASCII characther it is mandatory to sanitize the
+// strings to make them printable
+void sanitize_strings(char *s);

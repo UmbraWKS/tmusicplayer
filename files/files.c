@@ -1,4 +1,5 @@
 #include "files.h"
+#include <ctype.h>
 #include <json-c/json_object.h>
 #include <json-c/json_types.h>
 
@@ -129,6 +130,17 @@ void save_settings(Settings *settings) {
   json_object_put(obj);
 }
 
+void sanitize_strings(char *s) {
+  if (s == NULL)
+    return;
+
+  for (size_t i = 0; i < strlen(s); i++) {
+    if (!isprint((unsigned char)s[i])) {
+      s[i] = '?'; // replacing char
+    }
+  }
+}
+
 MusicFolder *parse_music_folders(const char *xml_string) {
   /*
       <subsonic-response>
@@ -164,6 +176,7 @@ MusicFolder *parse_music_folders(const char *xml_string) {
 
           tmp = xmlGetProp(folder_node, (const xmlChar *)"name");
           folder_dir->name = tmp ? strdup((char *)tmp) : NULL;
+          sanitize_strings(folder_dir->name);
           xmlFree(tmp);
 
           folder = add_folder_to_list(folder, folder_dir);
@@ -218,6 +231,7 @@ Artist *parse_artists(const char *xml_string) {
 
               tmp = xmlGetProp(artist_node, (const xmlChar *)"name");
               a->name = tmp ? strdup((char *)tmp) : NULL;
+              sanitize_strings(a->name);
               xmlFree(tmp);
 
               tmp = xmlGetProp(artist_node, (const xmlChar *)"coverArt");
@@ -276,6 +290,7 @@ AlbumsDirectory *parse_albums(const char *xml_string) {
 
       tmp = xmlGetProp(dir_node, (const xmlChar *)"name");
       dir->name = tmp ? strdup((char *)tmp) : NULL;
+      sanitize_strings(dir->name);
       xmlFree(tmp);
 
       tmp = xmlGetProp(dir_node, (const xmlChar *)"albumCount");
@@ -295,6 +310,7 @@ AlbumsDirectory *parse_albums(const char *xml_string) {
 
           tmp = xmlGetProp(child_node, (const xmlChar *)"artist");
           album->artist = tmp ? strdup((char *)tmp) : NULL;
+          sanitize_strings(album->artist);
           xmlFree(tmp);
 
           tmp = xmlGetProp(child_node, (const xmlChar *)"artistId");
@@ -307,6 +323,7 @@ AlbumsDirectory *parse_albums(const char *xml_string) {
 
           tmp = xmlGetProp(child_node, (const xmlChar *)"title");
           album->title = tmp ? strdup((char *)tmp) : NULL;
+          sanitize_strings(album->title);
           xmlFree(tmp);
 
           tmp = xmlGetProp(child_node, (const xmlChar *)"coverArt");
@@ -372,6 +389,7 @@ SongsDirectory *parse_songs(const char *xml_string) {
 
       tmp = xmlGetProp(dir_node, (const xmlChar *)"name");
       dir->name = tmp ? strdup((char *)tmp) : NULL;
+      sanitize_strings(dir->name);
       xmlFree(tmp);
 
       tmp = xmlGetProp(dir_node, (const xmlChar *)"parent");
@@ -405,14 +423,17 @@ SongsDirectory *parse_songs(const char *xml_string) {
 
           tmp = xmlGetProp(child, (const xmlChar *)"title");
           song->title = tmp ? strdup((char *)tmp) : NULL;
+          sanitize_strings(song->title);
           xmlFree(tmp);
 
           tmp = xmlGetProp(child, (const xmlChar *)"album");
           song->album = tmp ? strdup((char *)tmp) : NULL;
+          sanitize_strings(song->album);
           xmlFree(tmp);
 
           tmp = xmlGetProp(child, (const xmlChar *)"artist");
           song->artist = tmp ? strdup((char *)tmp) : NULL;
+          sanitize_strings(song->artist);
           xmlFree(tmp);
 
           tmp = xmlGetProp(child, (const xmlChar *)"suffix");
