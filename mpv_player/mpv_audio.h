@@ -39,5 +39,7 @@ void volume_down();
 void set_volume(int volume);
 // skips to the next song
 void skip_song();
-
+// starts api call to stream song matching id
 void play_song(char *id);
+// plays previous song in queue
+void previous_song();

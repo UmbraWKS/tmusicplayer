@@ -66,6 +66,7 @@
 | `q`             | Quit                           |
 | `l`             | Toggle queue loop              |
 | `d`             | Remove song from queue         |
+| `j`             | Play previous song             |
 | `k`             | Skip current song              |
 | `a`             | Add Album or Song to queue     |
 

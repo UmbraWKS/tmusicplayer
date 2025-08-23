@@ -297,6 +297,10 @@ void handle_input(int ch) {
     if (get_mpv_status() != MPV_STATUS_IDLE)
       skip_song();
     break;
+  case 'j': // previous song
+    if (get_mpv_status() != MPV_STATUS_IDLE)
+      previous_song();
+    break;
   case 'a': // add to queue
     if (manager->current_layout == LAYOUT_ARTIST_NAVIGATION) {
       // TODO: add check, if the song is alredy in the queue and don't add it

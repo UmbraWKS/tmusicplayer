@@ -25,6 +25,7 @@ void *play_queue(void *arg) {
   status = MPV_STATUS_INITIALIZING;
   ctx = mpv_create();
   if (!ctx) {
+    // TODO: print in error window
     perror("Failed creating mpv\n");
     status = MPV_STATUS_ERROR;
     pthread_mutex_unlock(&mpv_mutex);
@@ -44,11 +45,9 @@ void *play_queue(void *arg) {
   // manually starting the playback of the first song
   // TODO: append the next song and after the end of what is playing check if it
   // changed in the queue and handle it appropriately
-  if (queue->songs) {
+  if (queue->songs)
     play_song(queue->songs->id);
-    song_id = queue->songs->id;
-    currently_playing(queue->songs->id);
-  }
+
   // listening to time advancement in song
   mpv_observe_property(ctx, 1, "time-pos", MPV_FORMAT_DOUBLE);
   // player loop
@@ -59,32 +58,29 @@ void *play_queue(void *arg) {
       break;
       // when a song ends playing
     } else if (event->event_id == MPV_EVENT_END_FILE) {
-      // finding the song in the list
-      Song *tmp = queue->songs;
-      while (tmp && strcmp(tmp->id, song_id) != 0)
-        tmp = tmp->next;
-      // playing
-      if (tmp && tmp->next) {
-        tmp = tmp->next;
-        play_song(tmp->id);
-        // updating UI
-        currently_playing(tmp->id);
-        // updating currently playing song
-        song_id = tmp->id;
-
-      } else {
-        // if the loop is enabled playback starts back
-        if (settings->loop && queue->songs) {
-          play_song(queue->songs->id);
-          currently_playing(queue->songs->id);
-          song_id = queue->songs->id;
-          // playlist finished
+      // not starting the previous song if the current one has been manually
+      // replaced
+      mpv_event_end_file *eof = (mpv_event_end_file *)event->data;
+      if (eof->reason != MPV_END_FILE_REASON_STOP) {
+        // finding the song in the list
+        Song *tmp = queue->songs;
+        while (tmp && strcmp(tmp->id, song_id) != 0)
+          tmp = tmp->next;
+        // playing
+        if (tmp && tmp->next) {
+          tmp = tmp->next;
+          play_song(tmp->id);
         } else {
-          status = MPV_STATUS_IDLE;
-          status_changed = true;
+          // if the loop is enabled playback starts back
+          if (settings->loop && queue->songs) {
+            play_song(queue->songs->id);
+            // playlist finished
+          } else {
+            status = MPV_STATUS_IDLE;
+            status_changed = true;
+          }
         }
       }
-
     } else if (event->event_id == MPV_EVENT_PLAYBACK_RESTART) {
       // playback has started
       status = MPV_STATUS_PLAYING;
@@ -122,21 +118,19 @@ void *play_queue(void *arg) {
 void play_song(char *id) {
   char *params = song_params(id);
   char *url = url_formatter(server, "stream", params);
-  const char *cmd[] = {"loadfile", url, NULL};
+  const char *cmd[] = {"loadfile", url, "replace", NULL};
   pthread_mutex_lock(&mpv_mutex);
   check_error(mpv_command(ctx, cmd));
   pthread_mutex_unlock(&mpv_mutex);
+  if (status != MPV_STATUS_ERROR) {
+    currently_playing(id); // updating UI
+    song_id = id;
+  }
   free(params);
   free(url);
 }
 
-mpv_status_t get_mpv_status() {
-  mpv_status_t current_status;
-  pthread_mutex_lock(&mpv_mutex);
-  current_status = status;
-  pthread_mutex_unlock(&mpv_mutex);
-  return current_status;
-}
+mpv_status_t get_mpv_status() { return status; }
 // volume change when ctx has not been created is not possible
 void volume_up() {
   const char **cmd;
@@ -228,9 +222,22 @@ void skip_song() {
   pthread_mutex_unlock(&mpv_mutex);
 }
 
+void previous_song() {
+  Song *tmp, *prev = NULL;
+  tmp = queue->songs;
+  while (tmp && strcmp(tmp->id, song_id) != 0) {
+    prev = tmp;
+    tmp = tmp->next;
+  }
+  // the current has been found and there is one before
+  if (tmp && prev)
+    play_song(prev->id);
+}
+
 static inline void check_error(int status) {
   if (status < 0) {
-    printf("mpv API error: %s\n", mpv_error_string(status));
+    // TODO: print to error window
+    // mpv_error_string(status);
     status = MPV_STATUS_ERROR;
     exit(1);
   }
