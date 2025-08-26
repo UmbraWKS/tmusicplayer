@@ -9,6 +9,7 @@
 // needed for control over the player itself
 typedef enum {
   MPV_STATUS_IDLE,         // created but not initialized or closed/shutdown
+  MPV_STATUS_NOT_PLAYING,  // created and initialized but nothing is playing
   MPV_STATUS_INITIALIZING, // creating the handler and assigning properties
   MPV_STATUS_READY,        // initialized ready to play music
   MPV_STATUS_PLAYING,
@@ -18,8 +19,11 @@ typedef enum {
 } mpv_status_t;
 #endif
 
-// needs a Queue as argument
-void *play_queue(void *arg);
+// initializes the mpv_handle and sets all the parameters needed by the player
+void *init_player(void *arg);
+// to be called after a new queue is created, it starts playing the queue from
+// the first song
+void start_new_playback();
 // checks for errors during initialization and sets the error flag
 static inline void check_error(int status);
 int get_volume();

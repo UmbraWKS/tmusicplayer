@@ -30,6 +30,8 @@ char *song_duration = NULL; // total playing song duration
 void ncurses_init() {
   manager = calloc(1, sizeof(layout_manager_t));
   queue = calloc(1, sizeof(Queue));
+  // initializing the mpv player
+  pthread_create(&mpv_thread, NULL, init_player, NULL);
   initscr();
   raw();
   noecho();
@@ -180,11 +182,11 @@ void handle_input(int ch) {
     free(manager);
     endwin();
     return;
-  case '-':
+  case '-': // decrease volume
     if (get_mpv_status() != MPV_STATUS_IDLE)
       volume_down();
     break;
-  case '=':
+  case '=': // increase volume
     if (get_mpv_status() != MPV_STATUS_IDLE)
       volume_up();
     break;
@@ -532,12 +534,8 @@ void enter_input_handling() {
       i++;
     }
     queue->queue_size = i;
-    if (get_mpv_status() != MPV_STATUS_IDLE) {
-      shutdown_player(); // killing previous instance playing
-      pthread_join(mpv_thread, NULL);
-    }
 
-    pthread_create(&mpv_thread, NULL, play_queue, NULL);
+    start_new_playback();
   }
   // TODO: add song play when ENTER pressed in queue layout
 }

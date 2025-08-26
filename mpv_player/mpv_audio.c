@@ -20,7 +20,7 @@ int time_passed = -1;
 // id of the song playing in the queue
 char *song_id;
 
-void *play_queue(void *arg) {
+void *init_player(void *arg) {
   pthread_mutex_lock(&mpv_mutex);
   status = MPV_STATUS_INITIALIZING;
   ctx = mpv_create();
@@ -42,11 +42,6 @@ void *play_queue(void *arg) {
   check_error(mpv_initialize(ctx));
   status = MPV_STATUS_READY;
   pthread_mutex_unlock(&mpv_mutex);
-  // manually starting the playback of the first song
-  // TODO: append the next song and after the end of what is playing check if it
-  // changed in the queue and handle it appropriately
-  if (queue->songs)
-    play_song(queue->songs->id);
 
   // listening to time advancement in song
   mpv_observe_property(ctx, 1, "time-pos", MPV_FORMAT_DOUBLE);
@@ -57,6 +52,9 @@ void *play_queue(void *arg) {
     if (event->event_id == MPV_EVENT_SHUTDOWN) {
       break;
       // when a song ends playing
+
+      // TODO: append the next song and after the end of what is playing check
+      // if it changed in the queue and handle it appropriately
     } else if (event->event_id == MPV_EVENT_END_FILE) {
       // not starting the previous song if the current one has been manually
       // replaced
@@ -76,7 +74,7 @@ void *play_queue(void *arg) {
             play_song(queue->songs->id);
             // playlist finished
           } else {
-            status = MPV_STATUS_IDLE;
+            status = MPV_STATUS_NOT_PLAYING;
             status_changed = true;
           }
         }
@@ -113,6 +111,13 @@ void *play_queue(void *arg) {
   playback_status(status);
   pthread_mutex_unlock(&mpv_mutex);
   return NULL;
+}
+
+void start_new_playback() {
+  // clearing previous playlist
+  const char *cmd[] = {"playlist-clear", NULL};
+  // playing the first song of the new queue
+  play_song(queue->songs->id);
 }
 
 void play_song(char *id) {
