@@ -112,5 +112,14 @@ Song *add_song_to_list(Song *head, Song *song);
 Song *remove_song_from_list(Song *head, const char *id);
 // counts the songs in the list
 int count_songs(Song *head);
-
+// given a list of songs frees all the elements
 void free_song_list(Song *head);
+// given a list of songs and an id it returns the song of the corresponding id
+// in the list
+Song *get_song_from_id(Song *head, const char *id);
+// given a list of songs and a position in the list returns the song
+// in the position
+Song *get_song_from_pos(Song *head, int pos);
+// given a list of songs and an id returns true if the song with the
+// corresponding is present in the list, false otherwise
+bool is_song_present(Song *head, const char *id);

@@ -1,6 +1,6 @@
 CC = gcc
 CFLAGS = -g `pkg-config --cflags libxml-2.0 mpv`
-LDFLAGS = -lssl -lcrypto -lcurl -ljson-c -lncurses -lmenu `pkg-config --libs libxml-2.0 mpv`
+LDFLAGS = -lssl -lcrypto -lcurl -ljson-c -lncursesw -lmenuw `pkg-config --libs libxml-2.0 mpv`
 
 SRC = \
     player.c \

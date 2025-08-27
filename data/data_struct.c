@@ -104,3 +104,43 @@ void free_song_list(Song *head) {
     free(tmp);
   }
 }
+
+Song *get_song_from_id(Song *head, const char *id) {
+  if (head == NULL)
+    return NULL;
+  Song *tmp = head;
+  while (tmp && strcmp(tmp->id, id) != 0)
+    tmp = tmp->next;
+
+  if (tmp)
+    return tmp;
+
+  return NULL;
+}
+
+Song *get_song_from_pos(Song *head, int pos) {
+  if (head == NULL)
+    return NULL;
+  Song *tmp = head;
+  for (int i = 0; i < pos && tmp; i++)
+    tmp = tmp->next;
+
+  if (tmp)
+    return tmp;
+
+  return NULL;
+}
+
+bool is_song_present(Song *head, const char *id) {
+  if (head == NULL)
+    return false;
+
+  Song *s = head;
+  while (s && strcmp(s->id, id) != 0)
+    s = s->next;
+
+  if (s) // s not null song alredy present
+    return true;
+
+  return false;
+}

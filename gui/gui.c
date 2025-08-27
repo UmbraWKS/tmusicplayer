@@ -5,6 +5,7 @@
 #include <curses.h>
 #include <menu.h>
 #include <mpv/client.h>
+#include <sched.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
@@ -72,7 +73,7 @@ WINDOW *create_top_bar() {
   wrefresh(win);
   return win;
 }
-// TODO: add playlist loop indicator
+
 WINDOW *create_player_bar() {
   WINDOW *win =
       newwin(PLAYER_BAR_HEIGHT, manager->screen_width, TOP_BAR_HEIGHT, 0);
@@ -88,6 +89,11 @@ WINDOW *create_player_bar() {
   else
     mvwprintw(win, 2, 2, "Playing >> ");
 
+  if (settings->loop)
+    mvwprintw(win, 3, 2, "Queue >>  🔁");
+  else if (!settings->loop)
+    mvwprintw(win, 3, 2, "Queue >> ");
+
   if (play_time)
     mvwprintw(win, 1, manager->screen_width - 15, "[%s/", play_time);
   else
@@ -99,7 +105,8 @@ WINDOW *create_player_bar() {
     mvwprintw(win, 1, manager->screen_width - 8, "00:00]");
 
   if (settings && settings->volume)
-    mvwprintw(win, 2, manager->screen_width - 15, "[%d%%]", settings->volume);
+    mvwprintw(win, 2, manager->screen_width - 15, "[🔊 %d%%]",
+              settings->volume);
 
   wrefresh(win);
   return win;
@@ -279,10 +286,9 @@ void handle_input(int ch) {
         manager->current_content_window == 0) {
 
       int index = item_index(manager->panels[0].selected_item);
-      Song *s = queue->songs;
-      for (int i = 0; i < index; i++) {
-        s = s->next;
-      }
+      Song *s = get_song_from_pos(queue->songs, index);
+      if (s == NULL)
+        return;
       // can't delete currently playing
       if (strcmp(s->title, song_playing) == 0)
         break;
@@ -305,8 +311,6 @@ void handle_input(int ch) {
     break;
   case 'a': // add to queue
     if (manager->current_layout == LAYOUT_ARTIST_NAVIGATION) {
-      // TODO: add check, if the song is alredy in the queue and don't add it
-      // again
       int artist_index = item_index(manager->panels[0].selected_item);
       int album_index = item_index(manager->panels[1].selected_item);
       Artist *a = library->folder_list->artists;
@@ -320,26 +324,36 @@ void handle_input(int ch) {
 
       if (manager->current_content_window == 1) { // albums
         int i = 0;                                // songs counter
-        for (Song *s = al->songs_dir->songs; s != NULL; s = s->next) {
+        for (Song *s = al->songs_dir->songs;
+             s != NULL && !is_song_present(queue->songs, s->id); s = s->next) {
           queue->songs = add_song_to_list(queue->songs, s);
           i++;
         }
         queue->queue_size += i;
       } else if (manager->current_content_window == 2) { // songs
         int song_index = item_index(manager->panels[2].selected_item);
-        Song *s = al->songs_dir->songs;
-        for (int i = 0; i < song_index && s != NULL; i++)
-          s = s->next;
-        if (s) {
+        Song *s = get_song_from_pos(al->songs_dir->songs, song_index);
+        if (s && !is_song_present(queue->songs, s->id)) {
           queue->songs = add_song_to_list(queue->songs, s);
           queue->queue_size++;
-        }
+        } else if (s == NULL)
+          return;
       }
     }
     break;
   case 'l': // toggle playlist loop
             // only changing the variable, it's saved to file on program close
     settings->loop = !settings->loop;
+    wmove(manager->player_bar, 3, 2);
+    for (int i = 0; i < 15; i++)
+      waddch(manager->player_bar, ' ');
+
+    if (settings->loop)
+      mvwprintw(manager->player_bar, 3, 2, "Queue >>  🔁");
+    else if (!settings->loop)
+      mvwprintw(manager->player_bar, 3, 2, "Queue >> ");
+
+    wrefresh(manager->player_bar);
     break;
   default:
     break;
@@ -521,9 +535,9 @@ void enter_input_handling() {
     Album *al = a->albums_dir->albums;
     for (int i = 0; i < index; i++)
       al = al->next;
-    Song *s = al->songs_dir->songs;
-    for (int i = 0; i < index_song; i++)
-      s = s->next;
+    Song *s = get_song_from_pos(al->songs_dir->songs, index_song);
+    if (s == NULL)
+      return;
 
     free_song_list(queue->songs);
     queue->songs = NULL;
@@ -536,16 +550,24 @@ void enter_input_handling() {
     queue->queue_size = i;
 
     start_new_playback();
+  } else if (manager->current_layout == LAYOUT_QUEUE_NAVIGATION &&
+             manager->current_content_window == 0) {
+    int index = item_index(manager->panels[0].selected_item);
+    Song *s = get_song_from_pos(queue->songs, index);
+    if (s == NULL)
+      return;
+
+    play_song(s->id);
   }
-  // TODO: add song play when ENTER pressed in queue layout
 }
 
 void currently_playing(const char *id) {
   if (program_exit)
     return;
-  Song *tmp = queue->songs;
-  while (tmp && strcmp(id, tmp->id) != 0)
-    tmp = tmp->next;
+
+  Song *tmp = get_song_from_id(queue->songs, id);
+  if (tmp == NULL)
+    return;
 
   // clearing previous text
   if (song_playing) {
@@ -639,10 +661,10 @@ void volume_update(int volume) {
   // removing previous volume (without removal there could be bugs related to
   // number of chars
   wmove(manager->player_bar, 2, manager->screen_width - 15);
-  for (int i = 0; i < 6; i++)
+  for (int i = 0; i < 10; i++)
     waddch(manager->player_bar, ' ');
 
-  mvwprintw(manager->player_bar, 2, manager->screen_width - 15, "[%d%%]",
+  mvwprintw(manager->player_bar, 2, manager->screen_width - 15, "[🔊 %d%%]",
             volume);
   wrefresh(manager->player_bar);
 }
