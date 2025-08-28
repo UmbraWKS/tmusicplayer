@@ -1,5 +1,6 @@
 #include "api.h"
 #include <curl/curl.h>
+#include <openssl/evp.h>
 
 #define MD5_DIGEST_LENGTH 16
 
@@ -20,17 +21,39 @@ char *salt_generator(int length) {
 
 // input is password+salt
 char *hash_md5(const char *input) {
-  unsigned char digest[MD5_DIGEST_LENGTH];
-  MD5((unsigned char *)input, strlen(input), digest);
-  // TODO: MD5 is deprecated, replace the hasing
+  unsigned char digest[EVP_MAX_MD_SIZE];
+  unsigned int digest_length;
 
-  char *hashed_string = malloc(33);
+  EVP_MD_CTX *ctx = EVP_MD_CTX_new();
+  if (ctx == NULL)
+    return NULL;
+
+  if (EVP_DigestInit_ex(ctx, EVP_md5(), NULL) != 1) {
+    EVP_MD_CTX_free(ctx);
+    return NULL;
+  }
+
+  if (EVP_DigestUpdate(ctx, input, strlen(input)) != 1) {
+    EVP_MD_CTX_free(ctx);
+    return NULL;
+  }
+
+  if (EVP_DigestFinal_ex(ctx, digest, &digest_length) != 1) {
+    EVP_MD_CTX_free(ctx);
+    return NULL;
+  }
+
+  EVP_MD_CTX_free(ctx);
+
+  char *hashed_string = malloc(digest_length * 2 + 1);
   if (hashed_string == NULL)
     return NULL;
 
   // Converting binary hash to hex string
-  for (int i = 0; i < MD5_DIGEST_LENGTH; i++)
+  for (unsigned int i = 0; i < digest_length; i++)
     sprintf(&hashed_string[i * 2], "%02x", digest[i]);
+
+  hashed_string[digest_length * 2] = '\0';
 
   return hashed_string;
 }
