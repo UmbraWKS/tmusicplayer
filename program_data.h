@@ -4,7 +4,7 @@
 #ifndef PROGRAM_DATA
 #define PROGRAM_DATA
 
-#define APP_VERSION 0.3.1
+#define APP_VERSION 0.3.2
 #endif
 
 #include "data/data_struct.h"

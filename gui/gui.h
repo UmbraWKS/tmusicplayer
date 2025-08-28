@@ -33,6 +33,13 @@ typedef struct {
   ITEM *selected_item; // the selected item in each of the bottom menus
 } content_panel_t;
 
+// error window
+typedef struct {
+  WINDOW *window;
+  const char *message;
+  int w_height, w_width;
+} error_window_t;
+
 typedef struct {
   WINDOW *top_bar;    // top bar with the layout selection
   WINDOW *player_bar; // bar containing player info
@@ -46,6 +53,7 @@ typedef struct {
   int screen_height, screen_width;
   int windows_width, windows_height; // the width and height of the dynamic
                                      // windows at the bottom
+  error_window_t *error_window;
 
 } layout_manager_t;
 

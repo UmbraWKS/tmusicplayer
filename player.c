@@ -37,7 +37,7 @@ int main() {
   int result; // functions return
   result = app_path_validation();
   if (result == -1) {
-    error_window("encountered error initializing storage paths and files");
+    error_window("Encountered error initializing storage paths and files");
     return -1;
   } else if (result == -2) {
     error_window("The Config file doesnt exist, can't connect to the server");
@@ -46,13 +46,13 @@ int main() {
   server = malloc(sizeof(Server));
   result = read_server_data(server);
   if (result == -1) {
-    error_window("check config file");
+    error_window("Encountered error while reading the config file, check if "
+                 "the format is correct");
     return -1;
   }
 
   settings = calloc(1, sizeof(Settings));
   read_settings(settings);
-  printf("LOOP: %b", settings->loop);
   if (!get_data_from_server()) {
     curl_global_cleanup();
     endwin();
@@ -102,7 +102,7 @@ bool get_data_from_server() {
 
   CURLcode call_code = call_api(url, &response, curl);
   if (call_code != CURLE_OK) {
-    error_window("Error getting music folders from server");
+    error_window("Encountered error while retrieving data from server");
     return false;
   }
   free(url);
@@ -119,7 +119,7 @@ bool get_data_from_server() {
   url = url_formatter(server, "getIndexes", call_param);
   call_code = call_api(url, &response, curl);
   if (call_code != CURLE_OK) {
-    error_window("Error while getting Artists from server");
+    error_window("Encountered error while retrieving data from server");
     return false;
   }
   free(url); // need to handle url like that (can' t do inline call) to prevent
@@ -137,7 +137,7 @@ bool get_data_from_server() {
     url = url_formatter(server, "getMusicDirectory", call_param);
     call_code = call_api(url, &response, curl);
     if (call_code != CURLE_OK) {
-      error_window("Error while getting Albums from the server");
+      error_window("Encountered error while retrieving data from server");
       return false;
     }
     free(url);
@@ -155,7 +155,7 @@ bool get_data_from_server() {
       url = url_formatter(server, "getMusicDirectory", call_param);
       call_code = call_api(url, &response, curl);
       if (call_code != CURLE_OK) {
-        error_window("Error while getting Songs from server");
+        error_window("Encountered error while retrieving data from server");
         return false;
       }
       free(url);

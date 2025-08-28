@@ -670,25 +670,50 @@ void volume_update(int volume) {
 }
 
 void error_window(const char *message) {
-  initscr();
-  raw();
-  noecho();
-  halfdelay(1);
-  keypad(stdscr, TRUE);
-  curs_set(0);
+  if (stdscr == NULL) {
+    initscr();
+    raw();
+    noecho();
+    keypad(stdscr, TRUE);
+    curs_set(0);
+  }
+  if (manager == NULL)
+    manager = calloc(1, sizeof(layout_manager_t));
+
+  if (manager->error_window != NULL)
+    free(manager->error_window);
+
+  manager->error_window = calloc(1, sizeof(error_window_t));
 
   getmaxyx(stdscr, manager->screen_height, manager->screen_width);
-  WINDOW *win =
-      newwin(manager->screen_height / 2, manager->screen_width / 2, 0, 0);
-  box(win, 0, 0);
+
+  manager->error_window->w_height = 4;
+  if (manager->screen_width > strlen(message) + 2)
+    manager->error_window->w_width = strlen(message) + 2;
+  else
+    manager->error_window->w_width = manager->screen_width - 2;
+  manager->error_window->window =
+      newwin(manager->error_window->w_height, manager->error_window->w_width, 0,
+             manager->screen_width - manager->error_window->w_width - 1);
+  box(manager->error_window->window, 0, 0);
   refresh();
-  mvwprintw(win, 1, 1, "ERROR: %s\n Press 'q' to close", message);
-  wrefresh(win);
+  mvwprintw(manager->error_window->window, 1, 1, "%s", message);
+  mvwprintw(manager->error_window->window, 2, 1, "Press 'CTRL + q' to close");
+  wrefresh(manager->error_window->window);
+
+  int ch;
+  timeout(16);
   while (1) {
-    char ch = getch();
-    if (ch == 'q')
+    ch = getch();
+    if (ch == 17) {
+      free(manager->error_window);
+      manager->error_window = NULL;
       break;
+    }
   }
+  // if the top bar doesn't exists the error appeared before initialing ncurses
+  if (manager->top_bar != NULL)
+    refresh_screen();
 }
 
 void set_cursor_on_song_menu(content_panel_t *panel, Song *list, char *target) {
