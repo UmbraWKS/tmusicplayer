@@ -1,7 +1,6 @@
 #include "gui.h"
 #include "../files/files.h"
 #include "../mpv_player/mpv_callback.h"
-#include "../program_data.h"
 #include <curses.h>
 #include <menu.h>
 #include <mpv/client.h>
@@ -22,7 +21,6 @@ layout_manager_t *manager = NULL;
 pthread_t mpv_thread;
 
 /* variables that represent the player status and values inside the player bar*/
-char *song_playing = NULL;  // name of the song playing
 char *play_status = NULL;   // mpv status
 char *play_time = NULL;     // time elapsed playing
 char *song_duration = NULL; // total playing song duration
@@ -33,6 +31,7 @@ void ncurses_init() {
   queue = calloc(1, sizeof(Queue));
   // initializing the mpv player
   pthread_create(&mpv_thread, NULL, init_player, NULL);
+
   initscr();
   raw();
   noecho();
@@ -84,8 +83,8 @@ WINDOW *create_player_bar() {
   else
     mvwprintw(win, 1, 2, "Status >> ");
 
-  if (song_playing)
-    mvwprintw(win, 2, 2, "Playing >> %s", song_playing);
+  if (user_selection.song)
+    mvwprintw(win, 2, 2, "Playing >> %s", user_selection.song->title);
   else
     mvwprintw(win, 2, 2, "Playing >> ");
 
@@ -186,6 +185,9 @@ void handle_input(int ch) {
     }
 
     free_song_list(queue->songs);
+    free(user_selection.artist);
+    free(user_selection.album);
+    free(user_selection.song);
     free(manager);
     endwin();
     return;
@@ -276,7 +278,7 @@ void handle_input(int ch) {
         current_item(manager->panels[manager->current_content_window].menu);
     break;
   case 'p': // pause toggle
-    pause_toggle();
+    play_pause();
     break;
   case KEY_RESIZE: // terminal resized
     refresh_screen();
@@ -290,7 +292,7 @@ void handle_input(int ch) {
       if (s == NULL)
         return;
       // can't delete currently playing
-      if (strcmp(s->title, song_playing) == 0)
+      if (strcmp(s->id, user_selection.song->id) == 0)
         break;
 
       queue->songs = remove_song_from_list(queue->songs, s->id);
@@ -438,20 +440,23 @@ void populate_artists_window() {
     manager->panels[0].menu_items[i] = new_item(tmp->name, "");
     tmp = tmp->next;
   }
-
+  // TODO: restore state if an artist is saved in user_selection
   set_menu_attributes(&manager->panels[0]);
 }
 
 void populate_albums_window() {
-  int index = item_index(manager->panels[1].selected_item);
   int index_artist = item_index(manager->panels[0].selected_item);
   Artist *a = library->folder_list->artists;
   for (int i = 0; i < index_artist; i++)
     a = a->next;
-  Album *al = a->albums_dir->albums;
-  for (int i = 0; i < index; i++)
-    al = al->next;
 
+  if (user_selection.artist) {
+    free(user_selection.artist);
+    user_selection.artist = NULL;
+  }
+  user_selection.artist = duplicate_artist(a);
+
+  Album *al = a->albums_dir->albums;
   manager->panels[1].menu_items =
       (ITEM **)calloc(a->albums_dir->album_count + 1, sizeof(ITEM *));
   for (int i = 0; i < a->albums_dir->album_count && al != NULL; i++) {
@@ -471,6 +476,12 @@ void populate_songs_window() {
   Album *al = a->albums_dir->albums;
   for (int i = 0; i < index; i++)
     al = al->next;
+
+  if (user_selection.album) {
+    free(user_selection.album);
+    user_selection.album = NULL;
+  }
+  user_selection.album = duplicate_album(al);
 
   manager->panels[2].menu_items =
       (ITEM **)calloc(al->songs_dir->song_count + 1, sizeof(ITEM *));
@@ -495,7 +506,8 @@ void populate_queue_window() {
   set_menu_attributes(&manager->panels[0]);
 
   // if a song is playing adjusting the cursor position
-  set_cursor_on_song_menu(&manager->panels[0], queue->songs, song_playing);
+  set_cursor_on_song_menu(&manager->panels[0], queue->songs,
+                          user_selection.song->title);
 }
 
 void set_menu_attributes(content_panel_t *panel) {
@@ -561,31 +573,33 @@ void enter_input_handling() {
   }
 }
 
-void currently_playing(const char *id) {
+void currently_playing(Song *song) {
   if (program_exit)
     return;
 
-  Song *tmp = get_song_from_id(queue->songs, id);
-  if (tmp == NULL)
-    return;
-
   // clearing previous text
-  if (song_playing) {
-    size_t lenght = strlen(song_playing);
+  if (user_selection.song) {
+    size_t lenght = strlen(user_selection.song->title);
     // moving the cursor where the song must be deleted
     wmove(manager->player_bar, 2, 2 + strlen("Playing >> "));
     for (int i = 0; i < lenght; i++)
       waddch(manager->player_bar, ' ');
   }
 
-  song_playing = tmp->title;
-  song_time(tmp->duration);
-  mvwprintw(manager->player_bar, 2, 2, "Playing >> %s", song_playing);
+  if (user_selection.song) {
+    free(user_selection.song);
+    user_selection.song = NULL;
+  }
+  user_selection.song = duplicate_song(song);
+  song_time(user_selection.song->duration);
+  mvwprintw(manager->player_bar, 2, 2, "Playing >> %s",
+            user_selection.song->title);
   wrefresh(manager->player_bar);
 
   // if the user is in queue layout moving the cursor to match the song playing
   if (manager->current_layout == LAYOUT_QUEUE_NAVIGATION)
-    set_cursor_on_song_menu(&manager->panels[0], queue->songs, song_playing);
+    set_cursor_on_song_menu(&manager->panels[0], queue->songs,
+                            user_selection.song->title);
 }
 
 void playback_status(mpv_status_t status) {

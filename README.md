@@ -12,6 +12,7 @@
 - libxml2
 - mpv
 - pkg-config
+- glib2
 
 ## Compiling 
   
@@ -48,10 +49,11 @@
 
 ## Features
   
-- Browsing in the order Artist->Album->Songs and queue visualization
+- Browsing in the order Artist->Album->Songs
 - Volume control
-- Songs skip
+- Songs skip forward and back
 - Queue control: add/remove songs, add albums
+- MPRIS integration
 
 ## Controls
 

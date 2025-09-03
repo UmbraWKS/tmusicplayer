@@ -27,12 +27,9 @@ Album *add_album_to_list(Album *head, Album *album) {
 }
 
 Song *add_song_to_list(Song *head, Song *song) {
-  Song *new_song = malloc(sizeof(Song));
+  Song *new_song = duplicate_song(song);
   if (!new_song)
-    return head;
-
-  *new_song = *song;
-  new_song->next = NULL;
+    return NULL;
 
   if (head == NULL)
     return new_song;
@@ -143,4 +140,32 @@ bool is_song_present(Song *head, const char *id) {
     return true;
 
   return false;
+}
+
+Song *duplicate_song(Song *song) {
+  Song *new_song = malloc(sizeof(Song));
+  if (!new_song)
+    return NULL;
+  *new_song = *song;
+  new_song->next = NULL;
+  return new_song;
+}
+
+Artist *duplicate_artist(Artist *artist) {
+  Artist *new_artist = malloc(sizeof(Artist));
+  if (!new_artist)
+    return NULL;
+  *new_artist = *artist;
+  new_artist->next = NULL;
+  new_artist->albums_dir = NULL;
+  return new_artist;
+}
+Album *duplicate_album(Album *album) {
+  Album *new_album = malloc(sizeof(Album));
+  if (!new_album)
+    return NULL;
+  *new_album = *album;
+  new_album->next = NULL;
+  new_album->songs_dir = NULL;
+  return new_album;
 }

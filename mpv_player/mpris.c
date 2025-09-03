@@ -3,6 +3,8 @@
 #include "mpv_audio.h"
 #include <string.h>
 
+// TODO: print all g_printerr on error windows
+
 static const gchar *mpris_root_xml =
     "<node>"
     "  <interface name='org.mpris.MediaPlayer2'>"
@@ -60,7 +62,7 @@ mpris_player_t *init_mpris_player() {
   player->connection = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &player->error);
   if (!player->connection) {
     g_printerr("Failed to connect to session bus: %s\n",
-               player->error->message); // TODO: print to error window
+               player->error->message);
     g_error_free(player->error);
     return NULL;
   }
@@ -101,7 +103,7 @@ handle_root_method_call(GDBusConnection *connection, const gchar *sender,
   }
 }
 
-// callback from mpris calls to player functions
+// callback from system calls to player functions
 static void handle_player_method_call(
     GDBusConnection *connection, const gchar *sender, const gchar *object_path,
     const gchar *interface_name, const gchar *method_name, GVariant *parameters,
@@ -121,7 +123,7 @@ static void handle_player_method_call(
   g_dbus_method_invocation_return_value(invocation, NULL);
 }
 
-// Property getters
+// properties getters
 static GVariant *handle_root_get_property(GDBusConnection *connection,
                                           const gchar *sender,
                                           const gchar *object_path,
@@ -138,7 +140,7 @@ static GVariant *handle_root_get_property(GDBusConnection *connection,
   } else if (g_strcmp0(property_name, "Identity") == 0) {
     return g_variant_new_string("TMusicPlayer");
   } else if (g_strcmp0(property_name, "SupportedUriSchemes") == 0) {
-    const gchar *schemes[] = {"file", "url", NULL};
+    const gchar *schemes[] = {"file", "http", "https", NULL};
     return g_variant_new_strv(schemes, -1);
   } else if (g_strcmp0(property_name, "SupportedMimeTypes") == 0) {
     // since subsonic api can return basically all formats i just include the
@@ -157,6 +159,7 @@ static GVariant *handle_player_get_property(
     const gchar *interface_name, const gchar *property_name, GError **error,
     gpointer user_data) {
 
+  // TODO: add loop status
   if (g_strcmp0(property_name, "PlaybackStatus") == 0) {
     return g_variant_new_string(mpris_ctx->playback_status);
   } else if (g_strcmp0(property_name, "Volume") == 0) {
@@ -201,13 +204,15 @@ static GVariant *handle_player_get_property(
     if (user_selection.artist)
       g_variant_builder_add(&builder, "{sv}", "xesam:artist",
                             g_variant_new_string(user_selection.artist->name));
+
+    // TODO: set the mpris:artUrl
     return g_variant_builder_end(&builder);
   }
 
   return NULL;
 }
 
-// Property setters
+// properties setters
 static gboolean handle_player_set_property(
     GDBusConnection *connection, const gchar *sender, const gchar *object_path,
     const gchar *interface_name, const gchar *property_name, GVariant *value,
@@ -236,55 +241,55 @@ static const GDBusInterfaceVTable player_interface_vtable = {
 
 void on_bus_acquired(GDBusConnection *connection, const gchar *name,
                      gpointer user_data) {
-  GError *error = NULL;
   GDBusNodeInfo *root_node_info, *player_node_info;
   GMainLoop *loop = (GMainLoop *)user_data;
 
-  // Parse interface definitions
-  root_node_info = g_dbus_node_info_new_for_xml(mpris_root_xml, &error);
-  if (error) {
-    g_printerr("Failed to parse root interface: %s\n", error->message);
-    g_error_free(error);
+  // parsing interface definitions
+  root_node_info =
+      g_dbus_node_info_new_for_xml(mpris_root_xml, &mpris_ctx->error);
+  if (mpris_ctx->error) {
+    g_printerr("Failed to parse root interface: %s\n",
+               mpris_ctx->error->message);
+    g_error_free(mpris_ctx->error);
     return;
   }
 
-  player_node_info = g_dbus_node_info_new_for_xml(mpris_player_xml, &error);
-  if (error) {
-    g_printerr("Failed to parse player interface: %s\n", error->message);
-    g_error_free(error);
+  player_node_info =
+      g_dbus_node_info_new_for_xml(mpris_player_xml, &mpris_ctx->error);
+  if (mpris_ctx->error) {
+    g_printerr("Failed to parse player interface: %s\n",
+               mpris_ctx->error->message);
+    g_error_free(mpris_ctx->error);
     g_dbus_node_info_unref(root_node_info);
     return;
   }
 
-  // Register root interface
-  g_dbus_connection_register_object(connection, "/org/mpris/MediaPlayer2",
-                                    root_node_info->interfaces[0],
-                                    &root_interface_vtable, loop, NULL, &error);
-  if (error) {
-    g_printerr("Failed to register root interface: %s\n", error->message);
-    g_error_free(error);
+  // registering root interface
+  g_dbus_connection_register_object(
+      connection, "/org/mpris/MediaPlayer2", root_node_info->interfaces[0],
+      &root_interface_vtable, loop, NULL, &mpris_ctx->error);
+  if (mpris_ctx->error) {
+    g_printerr("Failed to register root interface: %s\n",
+               mpris_ctx->error->message);
+    g_error_free(mpris_ctx->error);
   }
 
-  error = NULL;
+  mpris_ctx->error = NULL;
 
-  // Register player interface
+  // registering player interface
   mpris_ctx->registration_id = g_dbus_connection_register_object(
       connection, "/org/mpris/MediaPlayer2", player_node_info->interfaces[0],
-      &player_interface_vtable, loop, NULL, &error);
+      &player_interface_vtable, loop, NULL, &mpris_ctx->error);
 
-  // Check if registration failed
   if (mpris_ctx->registration_id == 0) {
-    if (error != NULL) {
-      // Safe: error is guaranteed non-NULL
-      g_printerr("Failed to register player interface: %s\n", error->message);
-      g_error_free(error);
-      error = NULL;
-    } else {
-      // error pointer is NULL, so we cannot access error->message
+    if (mpris_ctx->error != NULL) {
+      g_printerr("Failed to register player interface: %s\n",
+                 mpris_ctx->error->message);
+      g_error_free(mpris_ctx->error);
+      mpris_ctx->error = NULL;
+    } else
       g_printerr("Failed to register player interface: unknown reason\n");
-    }
 
-    // Early return or cleanup to avoid using a non-registered interface
     return;
   }
   mpris_ctx->connection = connection;
@@ -300,7 +305,7 @@ const char *convert_status(mpv_status_t status) {
   case MPV_STATUS_PAUSED:
     return "Paused";
   default:
-    return "Paused";
+    return "Stopped";
   }
 }
 

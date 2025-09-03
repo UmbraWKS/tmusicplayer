@@ -1,7 +1,6 @@
 #include "mpv_audio.h"
 #include "../data/data_struct.h"
 #include "../files/files.h"
-#include "../program_data.h"
 #include "mpv_callback.h"
 #include <mpv/client.h>
 #include <pthread.h>
@@ -17,8 +16,6 @@ mpv_status_t status = MPV_STATUS_IDLE;
 bool status_changed = false;
 // variable holding the time passed in seconds of the song playing
 int time_passed = -1;
-// id of the song playing in the queue
-char *song_id;
 
 void *init_player(void *arg) {
   pthread_mutex_lock(&mpv_mutex);
@@ -61,7 +58,7 @@ void *init_player(void *arg) {
       mpv_event_end_file *eof = (mpv_event_end_file *)event->data;
       if (eof->reason != MPV_END_FILE_REASON_STOP) {
         // finding the song in the list
-        Song *tmp = get_song_from_id(queue->songs, song_id);
+        Song *tmp = get_song_from_id(queue->songs, user_selection.song->id);
         // playing
         if (tmp && tmp->next) {
           tmp = tmp->next;
@@ -78,7 +75,10 @@ void *init_player(void *arg) {
         }
       }
     } else if (event->event_id == MPV_EVENT_PLAYBACK_RESTART) {
-      // playback has started
+      // song was skipped while status PAUSED
+      if (status == MPV_STATUS_PAUSED)
+        play_player();
+
       status = MPV_STATUS_PLAYING;
       status_changed = true;
     } else if (event->event_id == MPV_EVENT_PROPERTY_CHANGE) {
@@ -86,6 +86,9 @@ void *init_player(void *arg) {
       if (strcmp(prop->name, "time-pos") == 0 && status == MPV_STATUS_PLAYING) {
         if (prop->format == MPV_FORMAT_DOUBLE && prop->data) {
           double time_stamp = *(double *)prop->data;
+
+          update_mpris_position(time_stamp);
+
           // i only care about seconds, so i am limiting function call to second
           // change only
           if ((int)time_stamp != time_passed) {
@@ -98,6 +101,7 @@ void *init_player(void *arg) {
     // calling when the status of the song playing changes
     if (status_changed) {
       playback_status(status);
+      update_mpris_status(convert_status(status));
       status_changed = false;
     }
   }
@@ -126,8 +130,8 @@ void play_song(char *id) {
   check_error(mpv_command(ctx, cmd));
   pthread_mutex_unlock(&mpv_mutex);
   if (status != MPV_STATUS_ERROR) {
-    currently_playing(id); // updating UI
-    song_id = id;
+    Song *song = get_song_from_id(queue->songs, id);
+    currently_playing(song);
   }
   free(params);
   free(url);
@@ -146,6 +150,7 @@ void volume_up() {
     settings->volume = 100;
   }
   volume_update(settings->volume);
+  mpris_ctx->volume = update_mpris_volume(settings->volume);
   mpv_command_async(ctx, 0, cmd);
   pthread_mutex_unlock(&mpv_mutex);
 }
@@ -161,6 +166,7 @@ void volume_down() {
     settings->volume = 0;
   }
   volume_update(settings->volume);
+  mpris_ctx->volume = update_mpris_volume(settings->volume);
   mpv_command_async(ctx, 0, cmd);
   pthread_mutex_unlock(&mpv_mutex);
 }
@@ -173,6 +179,9 @@ void set_volume(int volume) {
     const char *cmd[] = {"set", "volume", vol_str, NULL};
     mpv_command_async(ctx, 0, cmd);
   }
+  volume_update(volume);
+  mpris_ctx->volume = update_mpris_volume(volume);
+  settings->volume = volume;
   pthread_mutex_unlock(&mpv_mutex);
 }
 
@@ -190,7 +199,7 @@ int get_volume() {
   return (int)volume_64;
 }
 
-void pause_toggle() {
+void play_pause() {
   pthread_mutex_lock(&mpv_mutex);
   if (ctx) {
     const char *cmd[] = {"cycle", "pause", NULL};
@@ -202,6 +211,28 @@ void pause_toggle() {
   else if (status == MPV_STATUS_PAUSED)
     status = MPV_STATUS_PLAYING;
 
+  status_changed = true;
+}
+
+void pause_player() {
+  pthread_mutex_lock(&mpv_mutex);
+  if (ctx) {
+    const char *cmd[] = {"set", "pause", "yes", NULL};
+    mpv_command_async(ctx, 0, cmd);
+  }
+  pthread_mutex_unlock(&mpv_mutex);
+  status = MPV_STATUS_PAUSED;
+  status_changed = true;
+}
+
+void play_player() {
+  pthread_mutex_lock(&mpv_mutex);
+  if (ctx) {
+    const char *cmd[] = {"set", "pause", "no", NULL};
+    mpv_command_async(ctx, 0, cmd);
+  }
+  pthread_mutex_unlock(&mpv_mutex);
+  status = MPV_STATUS_PLAYING;
   status_changed = true;
 }
 
@@ -228,7 +259,7 @@ void skip_song() {
 void previous_song() {
   Song *tmp, *prev = NULL;
   tmp = queue->songs;
-  while (tmp && strcmp(tmp->id, song_id) != 0) {
+  while (tmp && strcmp(tmp->id, user_selection.song->id) != 0) {
     prev = tmp;
     tmp = tmp->next;
   }

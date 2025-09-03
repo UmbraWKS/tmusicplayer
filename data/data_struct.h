@@ -96,10 +96,31 @@ typedef struct MusicLibrary {
 
 } MusicLibrary;
 
+extern MusicLibrary *library;
+
 typedef struct Queue {
   int queue_size; // number of songs
   Song *songs;    // list of songs in the queue
 } Queue;
+
+extern Queue *queue;
+
+// the user selected ITEMS
+typedef struct {
+  Artist *artist;
+  Album *album;
+  Song *song;
+  // TODO: add playlist
+
+} user_selection_t;
+
+#endif
+
+#ifndef PROGRAM_DATA
+#define PROGRAM_DATA
+
+extern user_selection_t user_selection;
+extern bool program_exit;
 
 #endif
 
@@ -123,3 +144,7 @@ Song *get_song_from_pos(Song *head, int pos);
 // given a list of songs and an id returns true if the song with the
 // corresponding is present in the list, false otherwise
 bool is_song_present(Song *head, const char *id);
+/* functions that duplicate objects */
+Song *duplicate_song(Song *song);
+Artist *duplicate_artist(Artist *artist);
+Album *duplicate_album(Album *album);

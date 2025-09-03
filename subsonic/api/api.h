@@ -16,6 +16,8 @@ typedef struct Server {
   char *password;
 } Server;
 
+extern Server *server;
+
 typedef struct APIResponse {
   // raw xml file response
   char *data;

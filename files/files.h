@@ -26,6 +26,8 @@ typedef struct Settings {
   // saved to false by default when file is created
   bool loop;
 } Settings;
+
+extern Settings *settings;
 #endif
 
 // reading the json file containing server connection data

@@ -5,11 +5,12 @@
 #define MPV_CALLBACK
 #endif
 
+#include "../data/data_struct.h"
 #include "mpv_audio.h"
 
 // gets passed the id of the song in the queue that is playing
 // called every time the song changes
-void currently_playing(const char *id);
+void currently_playing(Song *song);
 
 // gets passed the playback status (PAUSED, PLAYING, IDLE)
 // called only when one of these is changes, it's for ui only
