@@ -58,21 +58,25 @@ void *init_player(void *arg) {
       mpv_event_end_file *eof = (mpv_event_end_file *)event->data;
       if (eof->reason != MPV_END_FILE_REASON_STOP) {
         // finding the song in the list
-        Song *tmp =
-            get_song_from_id(queue->songs, user_selection.playing_song->id);
-        // playing
-        if (tmp && tmp->next) {
-          tmp = tmp->next;
-          play_song(tmp->id);
-        } else {
-          // if the loop is enabled playback starts back
-          if (settings->loop && queue->songs) {
-            play_song(queue->songs->id);
-            // playlist finished
+        if (settings->loop != TRACK) {
+
+          Song *tmp =
+              get_song_from_id(queue->songs, user_selection.playing_song->id);
+          // playing
+          if (tmp && tmp->next) {
+            tmp = tmp->next;
+            play_song(tmp->id);
           } else {
-            status = MPV_STATUS_NOT_PLAYING;
-            status_changed = true;
+            // checking loop status
+            if (settings->loop == QUEUE && queue->songs)
+              play_song(queue->songs->id);
+            else if (settings->loop == NONE) {
+              status = MPV_STATUS_NOT_PLAYING;
+              status_changed = true;
+            }
           }
+        } else { // loop in TRACK status
+          play_song(user_selection.playing_song->id);
         }
       }
     } else if (event->event_id == MPV_EVENT_PLAYBACK_RESTART) {

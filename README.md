@@ -39,7 +39,7 @@
 ```json 
   {
     "volume": 50,
-    "playlist-loop": false
+    "playlist-loop": 0
   }
 ```
 
@@ -66,7 +66,7 @@
 | `↑` / `↓`         | Move in the menu               |
 | `1`/`2`/`3`         | Switch TAB in top bar          |
 | `q`             | Quit                           |
-| `l`             | Toggle queue loop              |
+| `l`             | Change loop status             |
 | `d`             | Remove song from queue         |
 | `j`             | Play previous song             |
 | `k`             | Skip current song              |

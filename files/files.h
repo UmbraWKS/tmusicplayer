@@ -12,6 +12,8 @@
 #ifndef FILES
 #define FILES
 
+typedef enum { NONE, QUEUE, TRACK } loop_status_t;
+
 #define SERVER_DATA_PATH ".config/tmusicplayer"
 #define SERVER_DATA_FILE "config.json"
 #define SETTINGS_FILE_NAME "settings.json"
@@ -23,8 +25,8 @@ extern const char *settings_file;
 typedef struct Settings {
   int volume;
   // queue loop
-  // saved to false by default when file is created
-  bool loop;
+  // saved to NONE by default when file is created
+  loop_status_t loop;
 } Settings;
 
 extern Settings *settings;

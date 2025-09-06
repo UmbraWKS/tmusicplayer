@@ -88,10 +88,16 @@ WINDOW *create_player_bar() {
   else
     mvwprintw(win, 2, 2, "Playing >> ");
 
-  if (settings->loop)
-    mvwprintw(win, 3, 2, "Queue >>  🔁");
-  else if (!settings->loop)
-    mvwprintw(win, 3, 2, "Queue >> ");
+  switch (settings->loop) {
+  case QUEUE:
+    mvwprintw(win, 3, 2, "Loop >> QUEUE");
+    break;
+  case TRACK:
+    mvwprintw(win, 3, 2, "Loop >> TRACK");
+    break;
+  case NONE:
+    mvwprintw(win, 3, 2, "Loop >> NONE");
+  }
 
   if (play_time)
     mvwprintw(win, 1, manager->screen_width - 15, "[%s/", play_time);
@@ -104,7 +110,7 @@ WINDOW *create_player_bar() {
     mvwprintw(win, 1, manager->screen_width - 8, "00:00]");
 
   if (settings && settings->volume)
-    mvwprintw(win, 2, manager->screen_width - 15, "[🔊 %d%%]",
+    mvwprintw(win, 2, manager->screen_width - 15, "[Vol: %d%%]",
               settings->volume);
 
   wrefresh(win);
@@ -344,17 +350,22 @@ void handle_input(int ch) {
       }
     }
     break;
-  case 'l': // toggle playlist loop
-            // only changing the variable, it's saved to file on program close
-    settings->loop = !settings->loop;
+  case 'l':
+    settings->loop = (loop_status_t)(((int)settings->loop + 1) % 3);
     wmove(manager->player_bar, 3, 2);
     for (int i = 0; i < 15; i++)
       waddch(manager->player_bar, ' ');
 
-    if (settings->loop)
-      mvwprintw(manager->player_bar, 3, 2, "Queue >>  🔁");
-    else if (!settings->loop)
-      mvwprintw(manager->player_bar, 3, 2, "Queue >> ");
+    switch (settings->loop) {
+    case QUEUE:
+      mvwprintw(manager->player_bar, 3, 2, "Loop >> QUEUE");
+      break;
+    case TRACK:
+      mvwprintw(manager->player_bar, 3, 2, "Loop >> TRACK");
+      break;
+    case NONE:
+      mvwprintw(manager->player_bar, 3, 2, "Loop >> NONE");
+    }
 
     wrefresh(manager->player_bar);
     break;
@@ -670,10 +681,10 @@ void volume_update(int volume) {
   // removing previous volume (without removal there could be bugs related to
   // number of chars
   wmove(manager->player_bar, 2, manager->screen_width - 15);
-  for (int i = 0; i < 10; i++)
+  for (int i = 0; i < 11; i++)
     waddch(manager->player_bar, ' ');
 
-  mvwprintw(manager->player_bar, 2, manager->screen_width - 15, "[🔊 %d%%]",
+  mvwprintw(manager->player_bar, 2, manager->screen_width - 15, "[Vol: %d%%]",
             volume);
   wrefresh(manager->player_bar);
 }

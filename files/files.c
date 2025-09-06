@@ -39,7 +39,8 @@ int read_settings(Settings *settings) {
   json_object_object_get_ex(obj, "playlist-loop", &playlist_loop);
 
   settings->volume = json_object_get_int(volume);
-  settings->loop = json_object_get_boolean(playlist_loop);
+  int tmp = json_object_get_int(playlist_loop);
+  settings->loop = (loop_status_t)tmp;
 
   json_object_put(obj);
 
@@ -124,7 +125,7 @@ void save_settings(Settings *settings) {
                            json_object_new_int(50)); // default to 50
 
   json_object_object_add(obj, "playlist-loop",
-                         json_object_new_boolean(settings->loop));
+                         json_object_new_int((int)settings->loop));
 
   json_object_to_file(settings_file, obj);
   json_object_put(obj);
