@@ -460,6 +460,10 @@ SongsDirectory *parse_songs(const char *xml_string) {
           song->duration = tmp ? atoi((char *)tmp) : 0;
           xmlFree(tmp);
 
+          tmp = xmlGetProp(child, (const xmlChar *)"coverArt");
+          song->cover_art = tmp ? strdup((char *)tmp) : NULL;
+          xmlFree(tmp);
+
           tmp = xmlGetProp(child, (const xmlChar *)"bitRate");
           song->bitrate = tmp ? atoi((char *)tmp) : 0;
           xmlFree(tmp);

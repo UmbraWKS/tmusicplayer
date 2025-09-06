@@ -128,6 +128,32 @@ Song *get_song_from_pos(Song *head, int pos) {
   return NULL;
 }
 
+Artist *get_artist_from_pos(Artist *head, int pos) {
+  if (head == NULL)
+    return NULL;
+  Artist *tmp = head;
+  for (int i = 0; i < pos && tmp; ++i)
+    tmp = tmp->next;
+
+  if (tmp)
+    return tmp;
+
+  return NULL;
+}
+
+Album *get_album_from_pos(Album *head, int pos) {
+  if (head == NULL)
+    return NULL;
+  Album *tmp = head;
+  for (int i = 0; i < pos && tmp; ++i)
+    tmp = tmp->next;
+
+  if (tmp)
+    return tmp;
+
+  return NULL;
+}
+
 bool is_song_present(Song *head, const char *id) {
   if (head == NULL)
     return false;
@@ -157,7 +183,6 @@ Artist *duplicate_artist(Artist *artist) {
     return NULL;
   *new_artist = *artist;
   new_artist->next = NULL;
-  new_artist->albums_dir = NULL;
   return new_artist;
 }
 Album *duplicate_album(Album *album) {
@@ -166,6 +191,5 @@ Album *duplicate_album(Album *album) {
     return NULL;
   *new_album = *album;
   new_album->next = NULL;
-  new_album->songs_dir = NULL;
   return new_album;
 }

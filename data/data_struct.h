@@ -74,8 +74,9 @@ typedef struct Song {
   char *album;
   char *artist;
   char *content_type;
-  char *format; // mp3/...
-  int duration; // seconds
+  char *format;    // mp3/...
+  char *cover_art; // id of the cover_art
+  int duration;    // seconds
   int bitrate;
   int year;
   int sampling_rate;
@@ -107,9 +108,13 @@ extern Queue *queue;
 
 // the user selected ITEMS
 typedef struct {
+  /* ITEMS selected in Artist view */
   Artist *artist;
   Album *album;
   Song *song;
+  /* Song currently playing */
+  Song *playing_song;
+
   // TODO: add playlist
 
 } user_selection_t;
@@ -141,6 +146,12 @@ Song *get_song_from_id(Song *head, const char *id);
 // given a list of songs and a position in the list returns the song
 // in the position
 Song *get_song_from_pos(Song *head, int pos);
+// given a list of artists and a position in the list returns the artist at the
+// position
+Artist *get_artist_from_pos(Artist *head, int pos);
+// given a list of Albums and a postion in the list returns the album in the
+// position
+Album *get_album_from_pos(Album *head, int pos);
 // given a list of songs and an id returns true if the song with the
 // corresponding is present in the list, false otherwise
 bool is_song_present(Song *head, const char *id);

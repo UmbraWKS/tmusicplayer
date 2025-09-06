@@ -184,18 +184,33 @@ static GVariant *handle_player_get_property(
     GVariantBuilder builder;
     g_variant_builder_init(&builder, G_VARIANT_TYPE("a{sv}"));
 
-    if (user_selection.song) {
-      size_t len =
-          strlen(user_selection.song->id) + strlen("/tmusicplayer/track/") + 1;
+    if (user_selection.playing_song) {
+      size_t len = strlen(user_selection.playing_song->id) +
+                   strlen("/tmusicplayer/track/") + 1;
       char *track_path = malloc(len);
       snprintf(track_path, len, "/tmusicplayer/track/%s",
-               user_selection.song->id);
+               user_selection.playing_song->id);
       g_variant_builder_add(&builder, "{sv}", "mpris:trackid",
                             g_variant_new_object_path(track_path));
-      g_variant_builder_add(&builder, "{sv}", "xesam:title",
-                            g_variant_new_string(user_selection.song->title));
-      g_variant_builder_add(&builder, "{sv}", "xesam:length",
-                            g_variant_new_int64(user_selection.song->duration));
+      g_variant_builder_add(
+          &builder, "{sv}", "xesam:title",
+          g_variant_new_string(user_selection.playing_song->title));
+      g_variant_builder_add(
+          &builder, "{sv}", "xesam:length",
+          g_variant_new_int64(user_selection.playing_song->duration));
+
+      char *call_param = malloc(
+          strlen("&id=") + strlen(user_selection.playing_song->cover_art) + 1);
+      sprintf(call_param, "&id=%s", user_selection.playing_song->cover_art);
+      char *art_url;
+      if (call_param)
+        art_url = url_formatter(server, "getCoverArt", call_param);
+      if (art_url) {
+        g_variant_builder_add(&builder, "{sv}", "mpris:artUrl",
+                              g_variant_new_string(art_url));
+        free(call_param);
+        free(art_url);
+      }
       free(track_path);
     }
     if (user_selection.album)
@@ -205,7 +220,6 @@ static GVariant *handle_player_get_property(
       g_variant_builder_add(&builder, "{sv}", "xesam:artist",
                             g_variant_new_string(user_selection.artist->name));
 
-    // TODO: set the mpris:artUrl
     return g_variant_builder_end(&builder);
   }
 
