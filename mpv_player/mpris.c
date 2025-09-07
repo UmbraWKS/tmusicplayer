@@ -1,4 +1,3 @@
-#include "../files/files.h"
 #include "glib.h"
 #include "mpv_audio.h"
 #include <string.h>
@@ -38,6 +37,7 @@ static const gchar *mpris_player_xml =
     "    <property name='CanPause' type='b' access='read'/>"
     "    <property name='CanSeek' type='b' access='read'/>"
     "    <property name='CanControl' type='b' access='read'/>"
+    "    <property name='LoopStatus' type='s' access='read'/>"
     "    <signal name='Seeked'>"
     "      <arg name='Position' type='x'/>"
     "    </signal>"
@@ -55,6 +55,7 @@ static const GDBusInterfaceVTable mpris_player_vtable = {NULL, NULL, NULL};
 mpris_player_t *init_mpris_player() {
   mpris_player_t *player = g_new0(mpris_player_t, 1);
   player->playback_status = g_strdup("Stopped");
+  player->loop_status = g_strdup(convert_loop_status(settings->loop));
   player->volume = update_mpris_volume(settings->volume);
   player->position = 0; // just an initialization, the updating is dynamic
   player->metadata = g_hash_table_new_full(g_str_hash, g_str_equal, g_free,
@@ -159,9 +160,10 @@ static GVariant *handle_player_get_property(
     const gchar *interface_name, const gchar *property_name, GError **error,
     gpointer user_data) {
 
-  // TODO: add loop status
   if (g_strcmp0(property_name, "PlaybackStatus") == 0) {
     return g_variant_new_string(mpris_ctx->playback_status);
+  } else if (g_strcmp0(property_name, "LoopStatus") == 0) {
+    return g_variant_new_string(mpris_ctx->loop_status);
   } else if (g_strcmp0(property_name, "Volume") == 0) {
     return g_variant_new_double(mpris_ctx->volume);
   } else if (g_strcmp0(property_name, "Position") == 0) {
@@ -332,4 +334,20 @@ gfloat update_mpris_volume(int volume) { return (float)volume / 100; }
 
 void update_mpris_position(double time) {
   mpris_ctx->position = (gint64)(time * 1000000);
+}
+
+const char *convert_loop_status(loop_status_t status) {
+  switch (status) {
+  case NONE:
+    return "None";
+  case QUEUE:
+    return "Playlist";
+  case TRACK:
+    return "Track";
+  }
+}
+
+void update_mpris_loop_status(const char *status) {
+  g_free(mpris_ctx->loop_status);
+  mpris_ctx->loop_status = g_strdup(status);
 }

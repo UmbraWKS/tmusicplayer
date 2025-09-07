@@ -367,6 +367,8 @@ void handle_input(int ch) {
       mvwprintw(manager->player_bar, 3, 2, "Loop >> NONE");
     }
 
+    update_mpris_loop_status(convert_loop_status(settings->loop));
+
     wrefresh(manager->player_bar);
     break;
   default:

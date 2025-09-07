@@ -1,3 +1,4 @@
+#include "../files/files.h"
 #include <gio/gio.h>
 #include <glib.h>
 #include <mpv/client.h>
@@ -27,6 +28,7 @@ typedef enum {
 
 typedef struct {
   gchar *playback_status; // "Playing", "Paused", "Stopped"
+  gchar *loop_status;
   gfloat volume; // using a different volume because playerctl ranges 0.0 - 1.0
   gint64 position; // passed time playing
   GHashTable *metadata;
@@ -94,3 +96,7 @@ void update_mpris_status(const char *status);
 gfloat update_mpris_volume(int volume);
 // updates position metadata
 void update_mpris_position(double time);
+// converts from loop_status_t to char
+const char *convert_loop_status(loop_status_t status);
+// updates the loop status in mpris
+void update_mpris_loop_status(const char *status);
