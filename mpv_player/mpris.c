@@ -198,7 +198,7 @@ static GVariant *handle_player_get_property(
           &builder, "{sv}", "xesam:title",
           g_variant_new_string(user_selection.playing_song->title));
       g_variant_builder_add(
-          &builder, "{sv}", "xesam:length",
+          &builder, "{sv}", "mpris:length",
           g_variant_new_int64(user_selection.playing_song->duration * 1000000));
 
       char *call_param = malloc(
