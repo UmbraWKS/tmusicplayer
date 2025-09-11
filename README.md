@@ -13,6 +13,9 @@
 - mpv
 - pkg-config
 - glib2
+- gcc
+
+Note: the "devel" variant of the above packages might be needed
 
 ## Compiling 
   
@@ -39,7 +42,10 @@
 ```json 
   {
     "volume": 50,
-    "playlist-loop": 0
+    "playlist-loop": 0,
+    "scrobble": false,
+    "__comment":"percent of song played before scrobbling",
+    "scrobble-time": 30
   }
 ```
 
@@ -54,6 +60,7 @@
 - Songs skip forward and back
 - Queue control: add/remove songs, add albums
 - MPRIS integration
+- Scrobble
 
 ## Controls
 

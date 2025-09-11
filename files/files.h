@@ -5,6 +5,7 @@
 #include <libxml/tree.h>
 #include <libxml/xpath.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -23,10 +24,12 @@ extern const char *config_file;
 extern const char *settings_file;
 
 typedef struct Settings {
-  int volume;
-  // queue loop
-  // saved to NONE by default when file is created
+  /* default values in files.c */
+  uint8_t volume;
   loop_status_t loop;
+  bool scrobble;
+  // the percentage of playtime at which scrobble api call is made
+  uint8_t scrobble_time;
 } Settings;
 
 extern Settings *settings;

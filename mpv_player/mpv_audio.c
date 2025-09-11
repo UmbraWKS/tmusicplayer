@@ -2,8 +2,13 @@
 #include "../data/data_struct.h"
 #include "../files/files.h"
 #include "mpv_callback.h"
+#include <curl/curl.h>
 #include <mpv/client.h>
 #include <pthread.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+#include <time.h>
 /*
     By passing the url it automatically handles buffering and streaming,
     the file is played while it downloads
@@ -15,7 +20,11 @@ mpv_status_t status = MPV_STATUS_IDLE;
 // IDLE, PLAYING, PAUSED
 bool status_changed = false;
 // variable holding the time passed in seconds of the song playing
-int time_passed = -1;
+uint32_t time_passed = 0;
+// variable that tracks if the song playing has called scrobble api
+bool has_scrobbled = false;
+
+APIResponse scrobble_response;
 
 void *init_player(void *arg) {
   pthread_mutex_lock(&mpv_mutex);
@@ -43,6 +52,7 @@ void *init_player(void *arg) {
   // listening to time advancement in song
   mpv_observe_property(ctx, 1, "time-pos", MPV_FORMAT_DOUBLE);
   // player loop
+  // TODO: rewrite the whole loop (possibly function) it's unreadable
   while (1) {
     mpv_event *event = mpv_wait_event(ctx, 1000);
 
@@ -100,6 +110,31 @@ void *init_player(void *arg) {
             playback_time((int)time_stamp);
             time_passed = (int)time_stamp;
           }
+
+          if (settings->scrobble && !has_scrobbled &&
+              (time_passed >=
+               (int)(user_selection.song->duration * settings->scrobble_time) /
+                   100)) {
+            // leaving the param "submission" defaut(true)
+            uint64_t time_in_millis = current_time_millis();
+            int time_length =
+                snprintf(NULL, 0, "%llu", (unsigned long long)time_in_millis);
+            size_t params_size = strlen("&id=") +
+                                 strlen(user_selection.playing_song->id) +
+                                 strlen("&time=") + time_length + 1;
+            char *params = malloc(sizeof(params_size));
+            snprintf(params, params_size, "&id=%s&time=%llu",
+                     user_selection.playing_song->id,
+                     (unsigned long long)time_in_millis);
+            CURLcode code = call_api(url_formatter(server, "scrobble", params),
+                                     &scrobble_response, curl);
+            has_scrobbled = true;
+            free(params);
+            if (code != CURLE_OK) {
+              // TODO: print to error window
+            }
+            // TODO: verify APIResponse
+          }
         }
       }
     }
@@ -136,6 +171,7 @@ void play_song(char *id) {
   pthread_mutex_unlock(&mpv_mutex);
   if (status != MPV_STATUS_ERROR) {
     Song *song = get_song_from_id(queue->songs, id);
+    has_scrobbled = false;
     currently_playing(song);
   }
   free(params);
@@ -280,4 +316,10 @@ static inline void check_error(int status) {
     status = MPV_STATUS_ERROR;
     exit(1);
   }
+}
+
+uint64_t current_time_millis() {
+  struct timespec ts;
+  clock_gettime(CLOCK_REALTIME, &ts);
+  return (uint64_t)ts.tv_sec * 1000 + (uint64_t)ts.tv_nsec / 1000000;
 }

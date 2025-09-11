@@ -10,6 +10,10 @@
 #define API_VER "1.16.1"
 #define APP_NAME "tmusicplayer"
 
+/* definition in player.c
+  the global CURL for api calls */
+extern CURL *curl;
+
 typedef struct Server {
   char *host;
   char *name;

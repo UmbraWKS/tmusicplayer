@@ -74,6 +74,8 @@ void skip_song();
 void play_song(char *id);
 // plays previous song in queue
 void previous_song();
+// return the current time in milliseconds
+uint64_t current_time_millis();
 
 /* MPRIS functions */
 // initializes the connection

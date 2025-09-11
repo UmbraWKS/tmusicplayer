@@ -74,6 +74,7 @@ mpris_player_t *init_mpris_player() {
 void cleanup_player() {
   if (mpris_ctx) {
     g_free(mpris_ctx->playback_status);
+    g_free(mpris_ctx->loop_status);
     g_hash_table_destroy(mpris_ctx->metadata);
     g_free(mpris_ctx);
     mpris_ctx = NULL;

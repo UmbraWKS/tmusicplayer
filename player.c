@@ -14,7 +14,7 @@
 #include <stdio.h>
 #include <unistd.h>
 
-#define APP_VERSION 0.4
+#define APP_VERSION 0.5
 
 APIResponse response;
 

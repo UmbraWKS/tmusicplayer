@@ -2,9 +2,16 @@
 #include <ctype.h>
 #include <json-c/json_object.h>
 #include <json-c/json_types.h>
+#include <stdint.h>
 
 const char *config_file;
 const char *settings_file;
+
+/* default values of settings variables */
+const uint8_t def_volume = 50;
+const uint8_t def_scrobble_time = 30;
+const loop_status_t def_loop = NONE;
+const bool def_scrobble = false;
 
 int read_server_data(Server *server) {
   json_object *obj = json_object_from_file(config_file);
@@ -33,14 +40,32 @@ int read_settings(Settings *settings) {
   if (obj == NULL)
     return -1;
 
-  json_object *volume, *playlist_loop;
+  json_object *volume, *playlist_loop, *scrobble, *scrobble_time;
 
   json_object_object_get_ex(obj, "volume", &volume);
   json_object_object_get_ex(obj, "playlist-loop", &playlist_loop);
+  json_object_object_get_ex(obj, "scrobble", &scrobble);
+  json_object_object_get_ex(obj, "scrobble-time", &scrobble_time);
 
-  settings->volume = json_object_get_int(volume);
+  uint8_t v = json_object_get_int(volume);
+  if (v >= 0 && v <= 100)
+    settings->volume = v;
+  else
+    settings->volume = def_volume;
+  // using a temporary int to convert the value to a loop_status_t
   int tmp = json_object_get_int(playlist_loop);
-  settings->loop = (loop_status_t)tmp;
+  if (tmp >= 0 && tmp <= 2)
+    settings->loop = (loop_status_t)tmp;
+  else
+    settings->loop = def_loop;
+
+  settings->scrobble = json_object_get_boolean(scrobble);
+
+  uint8_t sc = json_object_get_int(scrobble_time);
+  if (sc >= 0 && sc <= 100)
+    settings->scrobble_time = sc;
+  else
+    settings->scrobble_time = def_scrobble_time;
 
   json_object_put(obj);
 
@@ -109,23 +134,38 @@ bool file_exists(const char *path) {
 
 void create_settings_file(const char *path) {
   json_object *obj = json_object_new_object();
-  json_object_object_add(obj, "volume", json_object_new_int(50));
-  json_object_object_add(obj, "playlist-loop", json_object_new_boolean(false));
+  json_object_object_add(obj, "volume", json_object_new_int(def_volume));
+  json_object_object_add(obj, "playlist-loop",
+                         json_object_new_int((int)def_loop));
+  json_object_object_add(obj, "scrobble",
+                         json_object_new_boolean(def_scrobble));
+  // a comment for the user regarding scrobble_time
+  json_object_object_add(
+      obj, "__comment",
+      json_object_new_string("percent of song played before scrobbling"));
+
+  json_object_object_add(obj, "scrobble-time",
+                         json_object_new_int(def_scrobble_time));
   json_object_to_file(path, obj);
   json_object_put(obj);
 }
 
 void save_settings(Settings *settings) {
   json_object *obj = json_object_new_object();
-  if (settings->volume >= 0 && settings->volume <= 100)
-    json_object_object_add(obj, "volume",
-                           json_object_new_int(settings->volume));
-  else
-    json_object_object_add(obj, "volume",
-                           json_object_new_int(50)); // default to 50
+  json_object_object_add(obj, "volume", json_object_new_int(settings->volume));
 
   json_object_object_add(obj, "playlist-loop",
                          json_object_new_int((int)settings->loop));
+
+  json_object_object_add(obj, "scrobble",
+                         json_object_new_boolean(settings->scrobble));
+
+  json_object_object_add(
+      obj, "__comment",
+      json_object_new_string("percent of song played before scrobbling"));
+
+  json_object_object_add(obj, "scrobble-time",
+                         json_object_new_int(settings->scrobble_time));
 
   json_object_to_file(settings_file, obj);
   json_object_put(obj);
