@@ -101,12 +101,23 @@ void *init_player(void *arg) {
       if (strcmp(prop->name, "time-pos") == 0 && status == MPV_STATUS_PLAYING) {
         if (prop->format == MPV_FORMAT_DOUBLE && prop->data) {
           double time_stamp = *(double *)prop->data;
+          /*
+            if the user skips 5 or more seconds this prevents the scrobble from
+            being called (this happens when a song is skipped because the seek
+            100% triggers time-pos) in case of user-determined seek option (if
+            ever implemented) this will not affect it, as the call to the api
+            will be made the second after.
+          */
+          bool jumped;
 
           update_mpris_position(time_stamp);
 
           // i only care about seconds, so i am limiting function call to second
           // change only
           if ((int)time_stamp != time_passed) {
+
+            jumped = ((int)time_stamp - time_passed) > 5;
+
             playback_time((int)time_stamp);
             time_passed = (int)time_stamp;
           }
@@ -114,7 +125,8 @@ void *init_player(void *arg) {
           if (settings->scrobble && !has_scrobbled &&
               (time_passed >=
                (int)(user_selection.song->duration * settings->scrobble_time) /
-                   100)) {
+                   100) &&
+              !jumped) {
             // leaving the param "submission" defaut(true)
             uint64_t time_in_millis = current_time_millis();
             int time_length =
@@ -122,7 +134,7 @@ void *init_player(void *arg) {
             size_t params_size = strlen("&id=") +
                                  strlen(user_selection.playing_song->id) +
                                  strlen("&time=") + time_length + 1;
-            char *params = malloc(sizeof(params_size));
+            char *params = malloc(params_size);
             snprintf(params, params_size, "&id=%s&time=%llu",
                      user_selection.playing_song->id,
                      (unsigned long long)time_in_millis);
@@ -145,6 +157,7 @@ void *init_player(void *arg) {
       status_changed = false;
     }
   }
+
   pthread_mutex_lock(&mpv_mutex);
   status = MPV_STATUS_CLOSING;
   mpv_terminate_destroy(ctx);
