@@ -29,9 +29,9 @@ Note: the "devel" variant of the above packages might be needed
 
 ```json
   {
-	  "host":"http://subsonic.server",
-	  "name":"username",
-	  "password":"plain-text-password"
+    "host":"http://subsonic.server",
+    "name":"username",
+    "password":"plain-text-password"
   }
 ```
   
@@ -61,6 +61,7 @@ Note: the "devel" variant of the above packages might be needed
 - Queue control: add/remove songs, add albums
 - MPRIS integration
 - Scrobble
+- Library selection
 
 ## Controls
 

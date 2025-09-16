@@ -26,25 +26,34 @@ char *play_time = NULL;     // time elapsed playing
 char *song_duration = NULL; // total playing song duration
 // the volume is taken directly from the Settings
 
-void ncurses_init() {
-  manager = calloc(1, sizeof(layout_manager_t));
-  queue = calloc(1, sizeof(Queue));
-  // initializing the mpv player
-  pthread_create(&mpv_thread, NULL, init_player, NULL);
-
+void init_curses() {
   initscr();
   raw();
   noecho();
   halfdelay(1);
   keypad(stdscr, TRUE);
   curs_set(0);
+  refresh();
 
-  getmaxyx(stdscr, manager->screen_height, manager->screen_width);
+  if (!manager) {
+    manager = calloc(1, sizeof(layout_manager_t));
+    getmaxyx(stdscr, manager->screen_height, manager->screen_width);
+  }
+}
+
+void init_main_tui() {
+  queue = calloc(1, sizeof(Queue));
+  // initializing the mpv player
+  pthread_create(&mpv_thread, NULL, init_player, NULL);
+
+  if (!manager)
+    init_curses();
+
   // default on the first tab
   manager->current_layout = LAYOUT_ARTIST_NAVIGATION;
   manager->current_content_window = 0;
   manager->panels_count = ARTIST_NAVIGATION_WINDOWS;
-  manager->panels = calloc(manager->panels_count, sizeof(content_panel_t));
+  manager->panels = calloc(manager->panels_count, sizeof(menu_panel_t));
   refresh();
 
   manager->top_bar = create_top_bar();
@@ -117,12 +126,12 @@ WINDOW *create_player_bar() {
   return win;
 }
 /*
-        Creating static windows that will contain the menus
-*/
+ * Creating static windows that will contain the menus
+ */
 void create_content_windows() {
   // starting after the previous bars
   int starty = TOP_BAR_HEIGHT + PLAYER_BAR_HEIGHT;
-  manager->windows_height = manager->screen_height - starty;
+  int windows_height = manager->screen_height - starty;
 
   // setting panels count based on user selected tab
   switch (manager->current_layout) {
@@ -137,15 +146,17 @@ void create_content_windows() {
     break;
   }
 
-  manager->windows_width = manager->screen_width / manager->panels_count;
+  int windows_width = manager->screen_width / manager->panels_count;
 
   for (int i = 0; i < manager->panels_count; i++) {
     // relative starting position of the window in the ui
-    int x_pos = i * manager->windows_width;
+    manager->panels[i].w_width = windows_width;
+    manager->panels[i].w_height = windows_height;
+    int x_pos = i * windows_width;
 
     // creation of the windows
     manager->panels[i].window =
-        newwin(manager->windows_height, manager->windows_width, starty, x_pos);
+        newwin(windows_height, windows_width, starty, x_pos);
     wclear(manager->panels[i].window);
     box(manager->panels[i].window, 0, 0);
 
@@ -211,8 +222,7 @@ void handle_input(int ch) {
     if (manager->current_layout != LAYOUT_ARTIST_NAVIGATION) {
       remove_panel_windows(manager->panels_count);
       free(manager->panels); // removing old panels
-      manager->panels =
-          calloc(ARTIST_NAVIGATION_WINDOWS, sizeof(content_panel_t));
+      manager->panels = calloc(ARTIST_NAVIGATION_WINDOWS, sizeof(menu_panel_t));
       manager->current_layout = LAYOUT_ARTIST_NAVIGATION;
       manager->panels_count = ARTIST_NAVIGATION_WINDOWS;
       manager->current_content_window = 0;
@@ -228,7 +238,7 @@ void handle_input(int ch) {
       remove_panel_windows(manager->panels_count);
       free(manager->panels);
       manager->panels =
-          calloc(PLAYLIST_NAVIGATION_WINDOWS, sizeof(content_panel_t));
+          calloc(PLAYLIST_NAVIGATION_WINDOWS, sizeof(menu_panel_t));
       manager->current_layout = LAYOUT_PLAYLIST_NAVIGATION;
       manager->panels_count = PLAYLIST_NAVIGATION_WINDOWS;
       manager->current_content_window = 0;
@@ -242,8 +252,7 @@ void handle_input(int ch) {
     if (manager->current_layout != LAYOUT_QUEUE_NAVIGATION) {
       remove_panel_windows(manager->panels_count);
       free(manager->panels);
-      manager->panels =
-          calloc(QUEUE_NAVIGATION_WINDOWS, sizeof(content_panel_t));
+      manager->panels = calloc(QUEUE_NAVIGATION_WINDOWS, sizeof(menu_panel_t));
       manager->current_layout = LAYOUT_QUEUE_NAVIGATION;
       manager->panels_count = QUEUE_NAVIGATION_WINDOWS;
       manager->current_content_window = 0;
@@ -262,13 +271,13 @@ void handle_input(int ch) {
     if (manager->current_content_window == 2) {
 
       // freeing the menu
-      remove_menu(manager->current_content_window);
-      remove_items(manager->current_content_window);
+      remove_menu(&manager->panels[manager->current_content_window]);
+      remove_items(&manager->panels[manager->current_content_window]);
       manager->current_content_window = 1;
     } else if (manager->current_content_window == 1) {
 
-      remove_menu(manager->current_content_window);
-      remove_items(manager->current_content_window);
+      remove_menu(&manager->panels[manager->current_content_window]);
+      remove_items(&manager->panels[manager->current_content_window]);
       manager->current_content_window = 0;
     }
     break;
@@ -377,9 +386,10 @@ void handle_input(int ch) {
   wrefresh(manager->panels[manager->current_content_window].window);
 }
 
+// TODO: handle refresh screen for musicFolder selection and error_window
 void refresh_screen() {
   for (int i = 0; i < manager->panels_count; i++) {
-    remove_menu(i);
+    remove_menu(&manager->panels[i]);
 
     // then the top-level windows
     if (manager->panels[i].window) {
@@ -395,13 +405,7 @@ void refresh_screen() {
 
   endwin();
 
-  initscr();
-  raw();
-  noecho();
-  halfdelay(1);
-  keypad(stdscr, TRUE);
-  curs_set(0);
-
+  init_curses();
   getmaxyx(stdscr, manager->screen_height, manager->screen_width);
   refresh();
 
@@ -412,37 +416,37 @@ void refresh_screen() {
 
 void remove_panel_windows(int panels) {
   for (int i = 0; i < panels; i++) {
-    remove_menu(i);
-    remove_items(i);
+    remove_menu(&manager->panels[i]);
+    remove_items(&manager->panels[i]);
     delwin(manager->panels[i].window);
     manager->panels[i].window = NULL;
   }
 }
 
-void remove_menu(int index) {
-  if (manager->panels[index].menu) {
-    unpost_menu(manager->panels[index].menu);
-    set_menu_sub(manager->panels[index].menu, NULL);
-    free_menu(manager->panels[index].menu);
-    manager->panels[index].menu = NULL;
+void remove_menu(menu_panel_t *panel) {
+  if (panel->menu) {
+    unpost_menu(panel->menu);
+    set_menu_sub(panel->menu, NULL);
+    free_menu(panel->menu);
+    panel->menu = NULL;
   }
-  if (manager->panels[index].subwin) {
-    delwin(manager->panels[index].subwin);
-    manager->panels[index].subwin = NULL;
+  if (panel->subwin) {
+    delwin(panel->subwin);
+    panel->subwin = NULL;
   }
 
-  wrefresh(manager->panels[index].window);
+  wrefresh(panel->window);
 }
 
-void remove_items(int index) {
-  if (manager->panels[index].menu_items) {
+void remove_items(menu_panel_t *panel) {
+  if (panel->menu_items) {
     int i = 0;
-    while (manager->panels[index].menu_items[i]) {
-      free_item(manager->panels[index].menu_items[i]);
+    while (panel->menu_items[i]) {
+      free_item(panel->menu_items[i]);
       i++;
     }
-    free(manager->panels[index].menu_items);
-    manager->panels[index].menu_items = NULL;
+    free(panel->menu_items);
+    panel->menu_items = NULL;
   }
 }
 
@@ -497,18 +501,19 @@ void populate_queue_window() {
   set_menu_attributes(&manager->panels[0]);
 
   // if a song is playing adjusting the cursor position
-  set_cursor_on_song_menu(&manager->panels[0], queue->songs,
-                          user_selection.playing_song->title);
+  if (queue->songs)
+    set_cursor_on_song_menu(&manager->panels[0], queue->songs,
+                            user_selection.playing_song->title);
 }
 
-void set_menu_attributes(content_panel_t *panel) {
+void set_menu_attributes(menu_panel_t *panel) {
   panel->menu = new_menu(panel->menu_items);
   set_menu_win(panel->menu, panel->window);
-  panel->subwin = derwin(panel->window, manager->windows_height - 2,
-                         manager->windows_width - 2, 1, 1);
+  panel->subwin =
+      derwin(panel->window, panel->w_height - 2, panel->w_width - 2, 1, 1);
   set_menu_sub(panel->menu, panel->subwin);
-  set_menu_format(panel->menu, manager->windows_height - 2, 1);
-  set_menu_mark(panel->menu, "* ");
+  set_menu_format(panel->menu, panel->w_height - 2, 1);
+  set_menu_mark(panel->menu, "");
 
   post_menu(panel->menu);
   wrefresh(panel->window);
@@ -692,22 +697,13 @@ void volume_update(int volume) {
 }
 
 void error_window(const char *message) {
-  if (stdscr == NULL) {
-    initscr();
-    raw();
-    noecho();
-    keypad(stdscr, TRUE);
-    curs_set(0);
-  }
-  if (manager == NULL)
-    manager = calloc(1, sizeof(layout_manager_t));
+  if (stdscr == NULL)
+    init_curses();
 
   if (manager->error_window != NULL)
     free(manager->error_window);
 
   manager->error_window = calloc(1, sizeof(error_window_t));
-
-  getmaxyx(stdscr, manager->screen_height, manager->screen_width);
 
   manager->error_window->w_height = 4;
   if (manager->screen_width > strlen(message) + 2)
@@ -738,7 +734,7 @@ void error_window(const char *message) {
     refresh_screen();
 }
 
-void set_cursor_on_song_menu(content_panel_t *panel, Song *list, char *target) {
+void set_cursor_on_song_menu(menu_panel_t *panel, Song *list, char *target) {
   if (list && target) {
     Song *s = list;
     int index = 0;
@@ -752,4 +748,71 @@ void set_cursor_on_song_menu(content_panel_t *panel, Song *list, char *target) {
     }
   }
   wrefresh(panel->window);
+}
+
+int music_folder_window() {
+  if (!stdscr)
+    init_curses();
+
+  manager->library_selection = calloc(1, sizeof(menu_panel_t));
+
+  manager->library_selection->w_height = library->folders_count + 2;
+  manager->library_selection->w_width = manager->screen_width / 3;
+
+  manager->library_selection->window = newwin(
+      manager->library_selection->w_height, manager->library_selection->w_width,
+      (manager->screen_height - manager->library_selection->w_height) / 2,
+      (manager->screen_width - manager->library_selection->w_width) / 2);
+
+  box(manager->library_selection->window, 0, 0);
+  mvwprintw(manager->library_selection->window, 0, 2, "Select Library");
+  wrefresh(manager->library_selection->window);
+
+  manager->library_selection->menu_items =
+      (ITEM **)calloc(library->folders_count + 1, sizeof(ITEM *));
+  MusicFolder *tmp = library->folder_list;
+  for (int i = 0; i < library->folders_count && tmp; ++i) {
+    manager->library_selection->menu_items[i] = new_item(tmp->name, "");
+    tmp = tmp->next;
+  }
+  set_menu_attributes(manager->library_selection);
+
+  manager->library_selection->selected_item =
+      current_item(manager->library_selection->menu);
+
+  bool run = true;
+  int input;
+  int selection = 0;
+
+  while (run) {
+    input = getch();
+    switch (input) {
+    case 'q':
+      selection = -1;
+      run = false;
+      break;
+    case '\n':
+      selection = item_index(manager->library_selection->selected_item);
+      run = false;
+      break;
+    case KEY_DOWN:
+      menu_driver(manager->library_selection->menu, REQ_DOWN_ITEM);
+      manager->library_selection->selected_item =
+          current_item(manager->library_selection->menu);
+      break;
+    case KEY_UP:
+      menu_driver(manager->library_selection->menu, REQ_UP_ITEM);
+      manager->library_selection->selected_item =
+          current_item(manager->library_selection->menu);
+      break;
+    }
+    wrefresh(manager->library_selection->window);
+  }
+
+  remove_menu(manager->library_selection);
+  remove_items(manager->library_selection);
+  delwin(manager->library_selection->window);
+  free(manager->library_selection);
+
+  return selection;
 }

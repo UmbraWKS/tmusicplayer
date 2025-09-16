@@ -1,4 +1,5 @@
 #include <stdbool.h>
+#include <stdint.h>
 
 #ifndef DATA_STRUCT
 #define DATA_STRUCT
@@ -94,6 +95,9 @@ typedef struct MusicFolder {
 
 typedef struct MusicLibrary {
   MusicFolder *folder_list;
+  int16_t folders_count;
+  // index of the selected folder
+  int16_t selected_folder;
 
 } MusicLibrary;
 
@@ -138,6 +142,8 @@ Song *add_song_to_list(Song *head, Song *song);
 Song *remove_song_from_list(Song *head, const char *id);
 // counts the songs in the list
 int count_songs(Song *head);
+// counts the musicFolders in a list
+uint16_t count_folders(MusicFolder *folder);
 // given a list of songs frees all the elements
 void free_song_list(Song *head);
 // given a list of songs and an id it returns the song of the corresponding id

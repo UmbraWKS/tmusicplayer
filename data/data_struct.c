@@ -1,4 +1,5 @@
 #include "data_struct.h"
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -185,6 +186,7 @@ Artist *duplicate_artist(Artist *artist) {
   new_artist->next = NULL;
   return new_artist;
 }
+
 Album *duplicate_album(Album *album) {
   Album *new_album = malloc(sizeof(Album));
   if (!new_album)
@@ -192,4 +194,16 @@ Album *duplicate_album(Album *album) {
   *new_album = *album;
   new_album->next = NULL;
   return new_album;
+}
+
+uint16_t count_folders(MusicFolder *folder) {
+  if (!folder)
+    return 0;
+  MusicFolder *tmp = folder;
+  int count = 0;
+  while (tmp) {
+    count++;
+    tmp = tmp->next;
+  }
+  return count;
 }

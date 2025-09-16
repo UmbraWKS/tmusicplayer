@@ -14,7 +14,7 @@
 #include <stdio.h>
 #include <unistd.h>
 
-#define APP_VERSION 0.5
+#define APP_VERSION 0.5.5
 
 APIResponse response;
 
@@ -43,6 +43,9 @@ int main() {
   init_curl();
   srand(time(NULL));
   library = malloc(sizeof(MusicLibrary));
+
+  init_curses();
+
   int result; // functions return
   result = app_path_validation();
   if (result == -1) {
@@ -73,8 +76,8 @@ int main() {
   /* GBUS main loop */
   pthread_create(&dbus_thread, NULL, dbus_thread_func, NULL);
 
-  // initializing ncurses
-  ncurses_init();
+  // starting the main tui
+  init_main_tui();
 
   program_loop();
 
@@ -130,6 +133,7 @@ void init_curl() {
 
 // makes api calls to the server and fills structs
 // return true if execution was successful, false if there were errors
+// TODO: add check for ResponseAPI after calls
 bool get_data_from_server() {
   char *url = url_formatter(server, "getMusicFolders", "");
 
@@ -143,12 +147,19 @@ bool get_data_from_server() {
   free(response.data);
   library->folder_list = folder;
 
-  // i am only considering the first music folder
-  // TODO: allow for multiple musicFolders
+  library->folders_count = count_folders(library->folder_list);
+  library->selected_folder = 0;
+  if (library->folders_count > 1)
+    library->selected_folder = music_folder_window();
+  if (library->selected_folder == -1)
+    return false;
 
   // artists
-  char *call_param = malloc(strlen("&musicFolderId=") + strlen(folder->id) + 1);
-  sprintf(call_param, "&musicFolderId=%s", folder->id);
+  char *call_param =
+      malloc(strlen("&musicFolderId=") +
+             strlen(library->folder_list[library->selected_folder].id) + 1);
+  sprintf(call_param, "&musicFolderId=%s",
+          library->folder_list[library->selected_folder].id);
   url = url_formatter(server, "getIndexes", call_param);
   call_code = call_api(url, &response, curl);
   if (call_code != CURLE_OK) {
