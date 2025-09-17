@@ -561,20 +561,16 @@ void enter_input_handling() {
       free(user_selection.song);
     user_selection.song = duplicate_song(s);
 
-    if (s == NULL)
-      return;
-
     free_song_list(queue->songs);
     queue->songs = NULL;
-    int i = 0;
-    while (s != NULL) {
-      queue->songs = add_song_to_list(queue->songs, s);
-      s = s->next;
-      i++;
+    Song *song = user_selection.album->songs_dir->songs;
+    while (song != NULL) {
+      queue->songs = add_song_to_list(queue->songs, song);
+      song = song->next;
     }
-    queue->queue_size = i;
+    queue->queue_size = user_selection.album->song_count;
 
-    start_new_playback();
+    start_new_playback(s->id);
   } else if (manager->current_layout == LAYOUT_QUEUE_NAVIGATION &&
              manager->current_content_window == 0) {
     int index = item_index(manager->panels[0].selected_item);

@@ -56,9 +56,7 @@ Note: the "devel" variant of the above packages might be needed
 ## Features
   
 - Browsing in the order Artist->Album->Songs
-- Volume control
-- Songs skip forward and back
-- Queue control: add/remove songs, add albums
+- Queue control: add/remove songs, add albums, skips
 - MPRIS integration
 - Scrobble
 - Library selection
@@ -67,20 +65,20 @@ Note: the "devel" variant of the above packages might be needed
 
 | Key           | Action                         |
 |---------------|--------------------------------|
-| `p`             | Play/Pause toggle              |
-| `-` / `=`         | Lower/Raise volume by 5        |
-| `ESC`           | Go back in navigation          |
-| `ENTER`         | Select                         |
-| `↑` / `↓`         | Move in the menu               |
-| `1`/`2`/`3`         | Switch TAB in top bar          |
-| `q`             | Quit                           |
-| `l`             | Change loop status             |
-| `d`             | Remove song from queue         |
-| `j`             | Play previous song             |
-| `k`             | Skip current song              |
-| `a`             | Add Album or Song to queue     |
+| `p`           | Play/Pause toggle              |
+| `-` / `=`     | Lower/Raise volume by 5        |
+| `ESC`         | Go back in navigation          |
+| `ENTER`       | Select                         |
+| `↑` / `↓`     | Move in the menu               |
+| `1`/`2`/`3`   | Switch TAB in top bar          |
+| `q`           | Quit                           |
+| `l`           | Change loop status             |
+| `d`           | Remove song from queue         |
+| `j`           | Skip backward                  |
+| `k`           | Skip forward                   |
+| `a`           | Add Album or Song to queue     |
 
 
 ## Screenshots
-  ![TMusicPlayer screenshot](images/browse.png)
-  ![TMusicPlayer screenshot](images/queue.png)
+  ![TMusicPlayer screenshot](res/browse.png)
+  ![TMusicPlayer screenshot](res/queue.png)

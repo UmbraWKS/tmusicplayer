@@ -168,11 +168,11 @@ void *init_player(void *arg) {
   return NULL;
 }
 
-void start_new_playback() {
+void start_new_playback(char *id) {
   // clearing previous playlist
   const char *cmd[] = {"playlist-clear", NULL};
   // playing the first song of the new queue
-  play_song(queue->songs->id);
+  play_song(id);
 }
 
 void play_song(char *id) {

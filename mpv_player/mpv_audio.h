@@ -45,7 +45,7 @@ extern mpris_player_t *mpris_ctx;
 void *init_player(void *arg);
 // to be called after a new queue is created, it starts playing the queue from
 // the first song
-void start_new_playback();
+void start_new_playback(char *id);
 // checks for errors during initialization and sets the error flag
 static inline void check_error(int status);
 int get_volume();
