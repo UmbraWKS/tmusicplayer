@@ -138,3 +138,17 @@ char *song_params(char *id) {
 
   return song_url;
 }
+
+APIResponse *get_songs_from_server(Album *album) {
+  APIResponse *response = calloc(1, sizeof(APIResponse));
+  char *call_param = malloc(strlen("&id=") + strlen(album->id) + 1);
+  sprintf(call_param, "&id=%s", album->id);
+  char *url = url_formatter(server, "getMusicDirectory", call_param);
+  CURLcode call_code = call_api(url, response, curl);
+  if (call_code != CURLE_OK)
+    return NULL;
+
+  free(url);
+  free(call_param);
+  return response;
+}

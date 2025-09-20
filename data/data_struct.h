@@ -30,7 +30,6 @@ typedef struct SongsDirectory {
   int song_count;
 
   struct Song *songs;
-  struct SongsDirectory *next; // a directory is based on an album
 } SongsDirectory;
 
 typedef struct AlbumsDirectory {
@@ -39,7 +38,6 @@ typedef struct AlbumsDirectory {
   int album_count;
 
   struct Album *albums;
-  struct AlbumsDirectory *next;
 } AlbumsDirectory;
 
 typedef struct Artist {
@@ -112,11 +110,13 @@ extern Queue *queue;
 
 // the user selected ITEMS
 typedef struct {
-  /* ITEMS selected in Artist view */
+  /*
+   * pointers to ITEMS selected in Artist view
+   */
   Artist *artist;
   Album *album;
   Song *song;
-  /* Song currently playing */
+  /* Song currently playing, not a pointer, a complete copy */
   Song *playing_song;
 
   // TODO: add playlist
@@ -144,8 +144,8 @@ Song *remove_song_from_list(Song *head, const char *id);
 int count_songs(Song *head);
 // counts the musicFolders in a list
 uint16_t count_folders(MusicFolder *folder);
-// given a list of songs frees all the elements
-void free_song_list(Song *head);
+// counts the Artists in a list
+uint32_t count_artists(Artist *artist);
 // given a list of songs and an id it returns the song of the corresponding id
 // in the list
 Song *get_song_from_id(Song *head, const char *id);
@@ -155,13 +155,47 @@ Song *get_song_from_pos(Song *head, int pos);
 // given a list of artists and a position in the list returns the artist at the
 // position
 Artist *get_artist_from_pos(Artist *head, int pos);
+// given a list of Artists and an id returns the artists with the given id
+Artist *get_artist_from_id(Artist *head, const char *id);
 // given a list of Albums and a postion in the list returns the album in the
 // position
 Album *get_album_from_pos(Album *head, int pos);
+// given a list of Albums and an id returns the album with the corresponding id
+Album *get_album_from_id(Album *head, const char *id);
 // given a list of songs and an id returns true if the song with the
 // corresponding is present in the list, false otherwise
 bool is_song_present(Song *head, const char *id);
-/* functions that duplicate objects */
+/*
+ * functions that duplicate objects
+ * they only duplicate one and set next to NULL
+ * */
 Song *duplicate_song(Song *song);
 Artist *duplicate_artist(Artist *artist);
 Album *duplicate_album(Album *album);
+AlbumsDirectory *duplicate_albums_dir(AlbumsDirectory *albums_dir);
+SongsDirectory *duplicate_songs_dir(SongsDirectory *songs_dir);
+/*
+ * functions that free objects
+ */
+// frees all the songs in the list
+void free_song_list(Song *song);
+// frees a single song
+void free_song(Song *song);
+// frees a single song
+void free_album(Album *album);
+// frees all albums in the list
+void free_album_list(Album *album);
+// frees a SongsDirectory
+void free_songs_dir(SongsDirectory *dir);
+// frees a AlbumsDirectory
+void free_albums_dir(AlbumsDirectory *dir);
+// frees an Artist
+void free_artist(Artist *artist);
+// frees a list of Artists
+void free_artist_list(Artist *artist);
+// frees a MusicFolder
+void free_music_folder(MusicFolder *folder);
+// frees a MusicFolder list
+void free_music_folder_list(MusicFolder *folder);
+// frees the entire library
+void free_library(MusicLibrary *library);

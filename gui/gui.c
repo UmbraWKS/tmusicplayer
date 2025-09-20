@@ -10,20 +10,34 @@
 #include <string.h>
 
 const char *top_bar_labels[TOP_BAR_ITEMS] = {"Artists", "Playlists", "Queue"};
-const char *artist_nav_lables[ARTIST_NAVIGATION_WINDOWS] = {"Artists", "Albums",
+const char *artist_nav_labels[ARTIST_NAVIGATION_WINDOWS] = {"Artists", "Albums",
                                                             "Songs"};
-const char *playlist_nav_lables[PLAYLIST_NAVIGATION_WINDOWS] = {"Playlists",
+const char *playlist_nav_labels[PLAYLIST_NAVIGATION_WINDOWS] = {"Playlists",
                                                                 "Songs"};
 // array because i am thinking about adding stuff
-const char *queue_nav_lables[QUEUE_NAVIGATION_WINDOWS] = {"Queue"};
+const char *queue_nav_labels[QUEUE_NAVIGATION_WINDOWS] = {"Queue"};
+
+/*
+ * some static text for the player bar
+ */
+const char STATUS_TEXT[] = "Status >> ";
+const char PLAYING_TEXT[] = "Playing >> ";
+const char LOOP_TEXT[] = "Loop >> ";
+const char QUEUE_TEXT[] = "QUEUE";
+const char TRACK_TEXT[] = "TRACK";
+const char NONE_TEXT[] = "NONE";
+const char PLAY_STATUS_IDLE[] = "IDLE";
+const char PLAY_STATUS_PLAYING[] = "PLAYING";
+const char PLAY_STATUS_PAUSED[] = "PAUSED";
+
 layout_manager_t *manager = NULL;
 // thread the mpv instance runs on
 pthread_t mpv_thread;
 
 /* variables that represent the player status and values inside the player bar*/
-char *play_status = NULL;   // mpv status
-char *play_time = NULL;     // time elapsed playing
-char *song_duration = NULL; // total playing song duration
+char *play_status = NULL; // mpv status
+char play_time[6];        // time elapsed playing
+char song_duration[6];    // total playing song duration
 // the volume is taken directly from the Settings
 
 void init_curses() {
@@ -51,7 +65,7 @@ void init_main_tui() {
 
   // default on the first tab
   manager->current_layout = LAYOUT_ARTIST_NAVIGATION;
-  manager->current_content_window = 0;
+  manager->current_content_window = ARTISTS_PANEL;
   manager->panels_count = ARTIST_NAVIGATION_WINDOWS;
   manager->panels = calloc(manager->panels_count, sizeof(menu_panel_t));
   refresh();
@@ -59,7 +73,10 @@ void init_main_tui() {
   manager->top_bar = create_top_bar();
   manager->player_bar = create_player_bar();
   create_content_windows();
-  populate_artists_window();
+  if (!populate_artists_window()) {
+    error_window("Error while generating the layout");
+  }
+  doupdate();
 }
 
 WINDOW *create_top_bar() {
@@ -78,7 +95,7 @@ WINDOW *create_top_bar() {
 
     y += strlen(top_bar_labels[i]) + 2;
   }
-  wrefresh(win);
+  wnoutrefresh(win);
   return win;
 }
 
@@ -88,32 +105,24 @@ WINDOW *create_player_bar() {
   box(win, 0, 0);
 
   if (play_status)
-    mvwprintw(win, 1, 2, "Status >> %s", play_status);
+    mvwprintw(win, 1, 2, "%s%s", STATUS_TEXT, play_status);
   else
-    mvwprintw(win, 1, 2, "Status >> ");
+    mvwprintw(win, 1, 2, "%s", STATUS_TEXT);
 
   if (user_selection.playing_song)
-    mvwprintw(win, 2, 2, "Playing >> %s", user_selection.playing_song->title);
+    mvwprintw(win, 2, 2, "%s%s", PLAYING_TEXT,
+              user_selection.playing_song->title);
   else
-    mvwprintw(win, 2, 2, "Playing >> ");
+    mvwprintw(win, 2, 2, "%s", PLAYING_TEXT);
 
-  switch (settings->loop) {
-  case QUEUE:
-    mvwprintw(win, 3, 2, "Loop >> QUEUE");
-    break;
-  case TRACK:
-    mvwprintw(win, 3, 2, "Loop >> TRACK");
-    break;
-  case NONE:
-    mvwprintw(win, 3, 2, "Loop >> NONE");
-  }
+  print_loop_status(win, 3, 2);
 
-  if (play_time)
+  if (play_time[0])
     mvwprintw(win, 1, manager->screen_width - 15, "[%s/", play_time);
   else
     mvwprintw(win, 1, manager->screen_width - 15, "[00:00/");
 
-  if (song_duration)
+  if (song_duration[0])
     mvwprintw(win, 1, manager->screen_width - 8, "%s]", song_duration);
   else
     mvwprintw(win, 1, manager->screen_width - 8, "00:00]");
@@ -122,7 +131,7 @@ WINDOW *create_player_bar() {
     mvwprintw(win, 2, manager->screen_width - 15, "[Vol: %d%%]",
               settings->volume);
 
-  wrefresh(win);
+  wnoutrefresh(win);
   return win;
 }
 /*
@@ -163,11 +172,11 @@ void create_content_windows() {
     // placing window labels
     const char *label = NULL;
     if (manager->current_layout == LAYOUT_ARTIST_NAVIGATION)
-      label = artist_nav_lables[i];
+      label = artist_nav_labels[i];
     else if (manager->current_layout == LAYOUT_PLAYLIST_NAVIGATION)
-      label = playlist_nav_lables[i];
+      label = playlist_nav_labels[i];
     else if (manager->current_layout == LAYOUT_QUEUE_NAVIGATION)
-      label = queue_nav_lables[i];
+      label = queue_nav_labels[i];
 
     if (label)
       mvwprintw(manager->panels[i].window, 0, 2, "%s", label);
@@ -181,7 +190,7 @@ void create_content_windows() {
                          manager->panels[i].selected_item);
     }
 
-    wrefresh(manager->panels[i].window);
+    wnoutrefresh(manager->panels[i].window);
   }
 }
 
@@ -197,15 +206,13 @@ void handle_input(int ch) {
     delwin(manager->player_bar);
     // closing the mpv thread
     if (get_mpv_status() != MPV_STATUS_IDLE) {
-      shutdown_player(); // killing previous instance playing
+      shutdown_player();
       pthread_join(mpv_thread, NULL);
     }
 
     free_song_list(queue->songs);
-    free(user_selection.artist);
-    free(user_selection.album);
-    free(user_selection.song);
-    free(user_selection.playing_song);
+    free(queue);
+    free_library(library);
     free(manager);
     endwin();
     return;
@@ -225,9 +232,9 @@ void handle_input(int ch) {
       manager->panels = calloc(ARTIST_NAVIGATION_WINDOWS, sizeof(menu_panel_t));
       manager->current_layout = LAYOUT_ARTIST_NAVIGATION;
       manager->panels_count = ARTIST_NAVIGATION_WINDOWS;
-      manager->current_content_window = 0;
       create_content_windows();
-      populate_artists_window();
+      if (populate_artists_window())
+        manager->current_content_window = ARTISTS_PANEL;
 
       delwin(manager->top_bar);
       manager->top_bar = create_top_bar();
@@ -241,8 +248,10 @@ void handle_input(int ch) {
           calloc(PLAYLIST_NAVIGATION_WINDOWS, sizeof(menu_panel_t));
       manager->current_layout = LAYOUT_PLAYLIST_NAVIGATION;
       manager->panels_count = PLAYLIST_NAVIGATION_WINDOWS;
-      manager->current_content_window = 0;
+      manager->current_content_window = PLAYLISTS_PANEL;
       create_content_windows();
+
+      // TODO: implement playlists
 
       delwin(manager->top_bar);
       manager->top_bar = create_top_bar();
@@ -255,9 +264,9 @@ void handle_input(int ch) {
       manager->panels = calloc(QUEUE_NAVIGATION_WINDOWS, sizeof(menu_panel_t));
       manager->current_layout = LAYOUT_QUEUE_NAVIGATION;
       manager->panels_count = QUEUE_NAVIGATION_WINDOWS;
-      manager->current_content_window = 0;
       create_content_windows();
-      populate_queue_window();
+      if (populate_queue_window())
+        manager->current_content_window = QUEUE_PANEL;
 
       delwin(manager->top_bar);
       manager->top_bar = create_top_bar();
@@ -268,17 +277,17 @@ void handle_input(int ch) {
     enter_input_handling();
     break;
   case 27: // ESC - back
-    if (manager->current_content_window == 2) {
+    if (manager->current_content_window == SONGS_PANEL) {
 
       // freeing the menu
       remove_menu(&manager->panels[manager->current_content_window]);
       remove_items(&manager->panels[manager->current_content_window]);
-      manager->current_content_window = 1;
-    } else if (manager->current_content_window == 1) {
+      manager->current_content_window = ALBUMS_PANEL;
+    } else if (manager->current_content_window == ALBUMS_PANEL) {
 
       remove_menu(&manager->panels[manager->current_content_window]);
       remove_items(&manager->panels[manager->current_content_window]);
-      manager->current_content_window = 0;
+      manager->current_content_window = ARTISTS_PANEL;
     }
     break;
   case KEY_DOWN: // scroll down
@@ -301,10 +310,9 @@ void handle_input(int ch) {
     break;
   case 'd': // delete from queue
     if (manager->current_layout == LAYOUT_QUEUE_NAVIGATION &&
-        manager->current_content_window == 0) {
+        manager->current_content_window == QUEUE_PANEL) {
 
-      int index = item_index(manager->panels[0].selected_item);
-      Song *s = get_song_from_pos(queue->songs, index);
+      Song *s = item_userptr(manager->panels[QUEUE_PANEL].selected_item);
       if (s == NULL)
         return;
       // can't delete currently playing
@@ -314,9 +322,10 @@ void handle_input(int ch) {
       queue->songs = remove_song_from_list(queue->songs, s->id);
       queue->queue_size = count_songs(queue->songs);
 
-      remove_menu(0);
-      remove_items(0);
-      populate_queue_window();
+      remove_menu(&manager->panels[QUEUE_PANEL]);
+      remove_items(&manager->panels[QUEUE_PANEL]);
+      if (!populate_queue_window())
+        error_window("Error generating the layout");
     }
     break;
   case 'k': // skip song
@@ -329,30 +338,31 @@ void handle_input(int ch) {
     break;
   case 'a': // add to queue
     if (manager->current_layout == LAYOUT_ARTIST_NAVIGATION) {
-      int artist_index = item_index(manager->panels[0].selected_item);
-      int album_index = item_index(manager->panels[1].selected_item);
-      Artist *a = library->folder_list->artists;
-      for (int i = 0; i < artist_index && a != NULL; i++) {
-        a = a->next;
-      }
-      Album *al = a->albums_dir->albums;
-      for (int i = 0; i < album_index && al != NULL; i++) {
-        al = al->next;
+      Album *album = item_userptr(manager->panels[ALBUMS_PANEL].selected_item);
+      if (album->songs_dir == NULL) {
+        APIResponse *response = get_songs_from_server(album);
+        if (response == NULL) {
+          error_window("cannot add to queue");
+          break;
+        }
+        album->songs_dir = parse_songs(response->data);
+
+        free(response->data);
+        free(response);
       }
 
-      if (manager->current_content_window == 1) { // albums
-        int i = 0;                                // songs counter
-        for (Song *s = al->songs_dir->songs;
+      if (manager->current_content_window == ALBUMS_PANEL) { // albums
+        int i = 0;                                           // songs counter
+        for (Song *s = album->songs_dir->songs;
              s != NULL && !is_song_present(queue->songs, s->id); s = s->next) {
-          queue->songs = add_song_to_list(queue->songs, s);
+          queue->songs = add_song_to_list(queue->songs, duplicate_song(s));
           i++;
         }
         queue->queue_size += i;
-      } else if (manager->current_content_window == 2) { // songs
-        int song_index = item_index(manager->panels[2].selected_item);
-        Song *s = get_song_from_pos(al->songs_dir->songs, song_index);
+      } else if (manager->current_content_window == SONGS_PANEL) { // songs
+        Song *s = item_userptr(manager->panels[SONGS_PANEL].selected_item);
         if (s && !is_song_present(queue->songs, s->id)) {
-          queue->songs = add_song_to_list(queue->songs, s);
+          queue->songs = add_song_to_list(queue->songs, duplicate_song(s));
           queue->queue_size++;
         } else if (s == NULL)
           return;
@@ -361,29 +371,18 @@ void handle_input(int ch) {
     break;
   case 'l':
     settings->loop = (loop_status_t)(((int)settings->loop + 1) % 3);
-    wmove(manager->player_bar, 3, 2);
-    for (int i = 0; i < 15; i++)
-      waddch(manager->player_bar, ' ');
-
-    switch (settings->loop) {
-    case QUEUE:
-      mvwprintw(manager->player_bar, 3, 2, "Loop >> QUEUE");
-      break;
-    case TRACK:
-      mvwprintw(manager->player_bar, 3, 2, "Loop >> TRACK");
-      break;
-    case NONE:
-      mvwprintw(manager->player_bar, 3, 2, "Loop >> NONE");
-    }
+    erase_text(manager->player_bar, 3, 2, 15);
+    print_loop_status(manager->player_bar, 3, 2);
 
     update_mpris_loop_status(convert_loop_status(settings->loop));
 
-    wrefresh(manager->player_bar);
+    wnoutrefresh(manager->player_bar);
     break;
   default:
     break;
   }
-  wrefresh(manager->panels[manager->current_content_window].window);
+  wnoutrefresh(manager->panels[manager->current_content_window].window);
+  doupdate();
 }
 
 // TODO: handle refresh screen for musicFolder selection and error_window
@@ -412,6 +411,7 @@ void refresh_screen() {
   manager->top_bar = create_top_bar();
   manager->player_bar = create_player_bar();
   create_content_windows();
+  doupdate();
 }
 
 void remove_panel_windows(int panels) {
@@ -450,60 +450,136 @@ void remove_items(menu_panel_t *panel) {
   }
 }
 
-void populate_artists_window() {
-  manager->panels[0].menu_items =
-      (ITEM **)calloc(library->folder_list->artists_count + 1, sizeof(ITEM *));
-  Artist *tmp = library->folder_list->artists;
-  for (int i = 0; i < library->folder_list->artists_count; i++) {
-    manager->panels[0].menu_items[i] = new_item(tmp->name, "");
+bool populate_artists_window() {
+  // if the api has alredy been called once there is no need to do it again
+  if (library->folder_list[library->selected_folder].artists == NULL) {
+    APIResponse response;
+
+    char *call_param =
+        malloc(strlen("&musicFolderId=") +
+               strlen(library->folder_list[library->selected_folder].id) + 1);
+    sprintf(call_param, "&musicFolderId=%s",
+            library->folder_list[library->selected_folder].id);
+    char *url = url_formatter(server, "getIndexes", call_param);
+    CURLcode call_code = call_api(url, &response, curl);
+    if (call_code != CURLE_OK) {
+      error_window("Encountered error while retrieving data from server");
+      return false;
+    }
+    free(url);
+    free(call_param);
+
+    library->folder_list[library->selected_folder].artists =
+        parse_artists(response.data);
+    free(response.data);
+
+    library->folder_list[library->selected_folder].artists_count =
+        count_artists(library->folder_list[library->selected_folder].artists);
+  }
+
+  manager->panels[ARTISTS_PANEL].menu_items = (ITEM **)calloc(
+      library->folder_list[library->selected_folder].artists_count + 1,
+      sizeof(ITEM *));
+  Artist *tmp = library->folder_list[library->selected_folder].artists;
+  for (int i = 0;
+       i < library->folder_list[library->selected_folder].artists_count; i++) {
+    manager->panels[ARTISTS_PANEL].menu_items[i] = new_item(tmp->name, "");
+    set_item_userptr(manager->panels[ARTISTS_PANEL].menu_items[i], tmp);
     tmp = tmp->next;
   }
-  // TODO: restore state if an artist is saved in user_selection
-  set_menu_attributes(&manager->panels[0]);
+
+  set_menu_attributes(&manager->panels[ARTISTS_PANEL]);
+  manager->panels[ARTISTS_PANEL].selected_item =
+      manager->panels[ARTISTS_PANEL].menu_items[0];
+  return true;
 }
 
-void populate_albums_window() {
-  Album *al = user_selection.artist->albums_dir->albums;
-  manager->panels[1].menu_items = (ITEM **)calloc(
-      user_selection.artist->albums_dir->album_count + 1, sizeof(ITEM *));
-  for (int i = 0;
-       i < user_selection.artist->albums_dir->album_count && al != NULL; i++) {
-    manager->panels[1].menu_items[i] = new_item(al->title, "");
+bool populate_albums_window() {
+  Artist *artist = item_userptr(manager->panels[ARTISTS_PANEL].selected_item);
+
+  if (artist->albums_dir == NULL) {
+    APIResponse response;
+
+    char *call_param = malloc(strlen("&id=") + strlen(artist->id) + 1);
+    sprintf(call_param, "&id=%s", artist->id);
+    char *url = url_formatter(server, "getMusicDirectory", call_param);
+    CURLcode call_code = call_api(url, &response, curl);
+    if (call_code != CURLE_OK) {
+      error_window("Encountered error while retrieving data from server");
+      return false;
+    }
+    free(url);
+    free(call_param);
+
+    artist->albums_dir = parse_albums(response.data);
+
+    free(response.data);
+  }
+
+  Album *al = artist->albums_dir->albums;
+  manager->panels[ALBUMS_PANEL].menu_items =
+      (ITEM **)calloc(artist->albums_dir->album_count + 1, sizeof(ITEM *));
+
+  for (int i = 0; i < artist->albums_dir->album_count && al != NULL; i++) {
+    manager->panels[ALBUMS_PANEL].menu_items[i] = new_item(al->title, "");
+    set_item_userptr(manager->panels[ALBUMS_PANEL].menu_items[i], al);
     al = al->next;
   }
 
-  set_menu_attributes(&manager->panels[1]);
+  set_menu_attributes(&manager->panels[ALBUMS_PANEL]);
+  manager->panels[ALBUMS_PANEL].selected_item =
+      manager->panels[ALBUMS_PANEL].menu_items[0];
+
+  return true;
 }
 
-void populate_songs_window() {
-  int index = item_index(manager->panels[1].selected_item);
+bool populate_songs_window() {
+  Album *album = item_userptr(manager->panels[ALBUMS_PANEL].selected_item);
+  if (album == NULL)
+    return false;
+  if (album->songs_dir == NULL) {
+    APIResponse *response = get_songs_from_server(album);
+    if (response == NULL)
+      return false;
 
-  manager->panels[2].menu_items = (ITEM **)calloc(
-      user_selection.album->songs_dir->song_count + 1, sizeof(ITEM *));
-  Song *tmp = user_selection.album->songs_dir->songs;
-  for (int i = 0; i < user_selection.album->songs_dir->song_count; i++) {
-    manager->panels[2].menu_items[i] = new_item(tmp->title, "");
+    album->songs_dir = parse_songs(response->data);
+
+    free(response->data);
+    free(response);
+  }
+
+  manager->panels[SONGS_PANEL].menu_items =
+      (ITEM **)calloc(album->songs_dir->song_count + 1, sizeof(ITEM *));
+  Song *tmp = album->songs_dir->songs;
+  for (int i = 0; i < album->songs_dir->song_count && tmp; i++) {
+    manager->panels[SONGS_PANEL].menu_items[i] = new_item(tmp->title, "");
+    set_item_userptr(manager->panels[SONGS_PANEL].menu_items[i], tmp);
     tmp = tmp->next;
   }
 
-  set_menu_attributes(&manager->panels[2]);
+  set_menu_attributes(&manager->panels[SONGS_PANEL]);
+  manager->panels[SONGS_PANEL].selected_item =
+      manager->panels[SONGS_PANEL].menu_items[0];
+  return true;
 }
 
-void populate_queue_window() {
-  manager->panels[0].menu_items =
+bool populate_queue_window() {
+  manager->panels[QUEUE_PANEL].menu_items =
       (ITEM **)calloc(queue->queue_size + 1, sizeof(ITEM *));
   Song *tmp = queue->songs;
   for (int i = 0; i < queue->queue_size; i++) {
-    manager->panels[0].menu_items[i] = new_item(tmp->title, "");
+    manager->panels[QUEUE_PANEL].menu_items[i] = new_item(tmp->title, "");
+    set_item_userptr(manager->panels[QUEUE_PANEL].menu_items[i], tmp);
     tmp = tmp->next;
   }
 
-  set_menu_attributes(&manager->panels[0]);
+  set_menu_attributes(&manager->panels[QUEUE_PANEL]);
 
   // if a song is playing adjusting the cursor position
   if (queue->songs)
-    set_cursor_on_song_menu(&manager->panels[0], queue->songs,
+    set_cursor_on_song_menu(&manager->panels[QUEUE_PANEL], queue->songs,
                             user_selection.playing_song->title);
+  return true;
 }
 
 void set_menu_attributes(menu_panel_t *panel) {
@@ -521,60 +597,65 @@ void set_menu_attributes(menu_panel_t *panel) {
 
 void enter_input_handling() {
   if (manager->current_layout == LAYOUT_ARTIST_NAVIGATION &&
-      manager->current_content_window == 0) {
+      manager->current_content_window == ARTISTS_PANEL) {
 
-    int index = item_index(manager->panels[0].selected_item);
-    Artist *a = get_artist_from_pos(library->folder_list->artists, index);
+    Artist *a = item_userptr(manager->panels[ARTISTS_PANEL].selected_item);
     if (a == NULL)
       return;
     if (user_selection.artist != NULL)
-      free(user_selection.artist);
-    user_selection.artist = duplicate_artist(a);
+      user_selection.artist = NULL;
 
-    manager->current_content_window = 1;
-    populate_albums_window();
+    user_selection.artist = a;
+
+    if (populate_albums_window())
+      manager->current_content_window = ALBUMS_PANEL;
+
   } else if (manager->current_layout == LAYOUT_ARTIST_NAVIGATION &&
-             manager->current_content_window == 1) {
+             manager->current_content_window == ALBUMS_PANEL) {
 
-    int index = item_index(manager->panels[1].selected_item);
-    Album *a =
-        get_album_from_pos(user_selection.artist->albums_dir->albums, index);
+    Album *a = item_userptr(manager->panels[ALBUMS_PANEL].selected_item);
     if (a == NULL)
       return;
     if (user_selection.album != NULL)
-      free(user_selection.album);
+      user_selection.album = NULL;
 
-    user_selection.album = duplicate_album(a);
+    user_selection.album = a;
 
-    manager->current_content_window = 2;
-    populate_songs_window();
-  } else if (manager->current_layout == LAYOUT_ARTIST_NAVIGATION &&
-             manager->current_content_window == 2) {
-
-    int index_song = item_index(manager->panels[2].selected_item);
-    // song needed to loop all the songs in the album
-    Song *s =
-        get_song_from_pos(user_selection.album->songs_dir->songs, index_song);
-    if (s == NULL)
+    Album *album = item_userptr(manager->panels[ALBUMS_PANEL].selected_item);
+    if (album == NULL)
       return;
-    if (user_selection.song != NULL)
-      free(user_selection.song);
-    user_selection.song = duplicate_song(s);
+    if (populate_songs_window())
+      manager->current_content_window = SONGS_PANEL;
+  } else if (manager->current_layout == LAYOUT_ARTIST_NAVIGATION &&
+             manager->current_content_window == SONGS_PANEL) {
 
-    free_song_list(queue->songs);
-    queue->songs = NULL;
-    Song *song = user_selection.album->songs_dir->songs;
-    while (song != NULL) {
-      queue->songs = add_song_to_list(queue->songs, song);
-      song = song->next;
+    Album *album = item_userptr(manager->panels[ALBUMS_PANEL].selected_item);
+    if (album == NULL)
+      return;
+    Song *selected_song =
+        item_userptr(manager->panels[SONGS_PANEL].selected_item);
+    if (selected_song == NULL)
+      return;
+    if (queue->songs) {
+      free_song_list(queue->songs);
+      queue->songs = NULL;
     }
-    queue->queue_size = user_selection.album->song_count;
+    if (user_selection.song != NULL)
+      user_selection.song = NULL;
 
-    start_new_playback(s->id);
+    user_selection.song = selected_song;
+
+    Song *s = album->songs_dir->songs;
+    while (s != NULL) {
+      queue->songs = add_song_to_list(queue->songs, duplicate_song(s));
+      s = s->next;
+    }
+    queue->queue_size = album->song_count;
+
+    start_new_playback(selected_song->id);
   } else if (manager->current_layout == LAYOUT_QUEUE_NAVIGATION &&
-             manager->current_content_window == 0) {
-    int index = item_index(manager->panels[0].selected_item);
-    Song *s = get_song_from_pos(queue->songs, index);
+             manager->current_content_window == QUEUE_PANEL) {
+    Song *s = item_userptr(manager->panels[QUEUE_PANEL].selected_item);
     if (s == NULL)
       return;
 
@@ -586,28 +667,23 @@ void currently_playing(Song *song) {
   if (program_exit)
     return;
 
-  // clearing previous text
   if (user_selection.playing_song) {
-    size_t lenght = strlen(user_selection.playing_song->title);
+    size_t length = strlen(user_selection.playing_song->title) + 1;
     // moving the cursor where the song must be deleted
-    wmove(manager->player_bar, 2, 2 + strlen("Playing >> "));
-    for (int i = 0; i < lenght; i++)
-      waddch(manager->player_bar, ' ');
-  }
+    erase_text(manager->player_bar, 2, 2 + strlen(PLAYING_TEXT), length);
 
-  if (user_selection.playing_song) {
-    free(user_selection.playing_song);
+    free_song(user_selection.playing_song);
     user_selection.playing_song = NULL;
   }
   user_selection.playing_song = duplicate_song(song);
   song_time(user_selection.playing_song->duration);
-  mvwprintw(manager->player_bar, 2, 2, "Playing >> %s",
+  mvwprintw(manager->player_bar, 2, 2, "%s%s", PLAYING_TEXT,
             user_selection.playing_song->title);
   wrefresh(manager->player_bar);
 
   // if the user is in queue layout moving the cursor to match the song playing
   if (manager->current_layout == LAYOUT_QUEUE_NAVIGATION)
-    set_cursor_on_song_menu(&manager->panels[0], queue->songs,
+    set_cursor_on_song_menu(&manager->panels[QUEUE_PANEL], queue->songs,
                             user_selection.playing_song->title);
 }
 
@@ -619,27 +695,22 @@ void playback_status(mpv_status_t status) {
   if (play_status) {
     size_t lenght = strlen(play_status);
 
-    wmove(manager->player_bar, 1, 2 + strlen("Status >> "));
-    for (int i = 0; i < lenght; i++)
-      waddch(manager->player_bar, ' ');
+    erase_text(manager->player_bar, 1, 2 + strlen(STATUS_TEXT),
+               strlen(play_status));
   }
-
   switch (status) {
-  case MPV_STATUS_IDLE:
-    play_status = "IDLE";
-    break;
   case MPV_STATUS_PLAYING:
-    play_status = "PLAYING";
+    play_status = (char *)PLAY_STATUS_PLAYING;
     break;
   case MPV_STATUS_PAUSED:
-    play_status = "PAUSED";
+    play_status = (char *)PLAY_STATUS_PAUSED;
     break;
   default:
-    play_status = "IDLE";
+    play_status = (char *)PLAY_STATUS_IDLE;
     break;
   }
 
-  mvwprintw(manager->player_bar, 1, 2, "Status >> %s", play_status);
+  mvwprintw(manager->player_bar, 1, 2, "%s%s", STATUS_TEXT, play_status);
   wrefresh(manager->player_bar);
 }
 
@@ -647,9 +718,7 @@ void playback_time(int time) {
   if (program_exit)
     return;
 
-  free(play_time);
-  play_time = NULL;
-  play_time = format_time(time);
+  format_time(time, play_time);
   mvwprintw(manager->player_bar, 1, manager->screen_width - 15, "[%s/",
             play_time);
   wrefresh(manager->player_bar);
@@ -659,15 +728,13 @@ void song_time(int time) {
   if (program_exit)
     return;
 
-  free(song_duration);
-  song_duration = NULL;
-  song_duration = format_time(time);
+  format_time(time, song_duration);
   mvwprintw(manager->player_bar, 1, manager->screen_width - 8, "%s]",
             song_duration);
   wrefresh(manager->player_bar);
 }
 
-char *format_time(int seconds) {
+void format_time(int seconds, char time[6]) {
   // finding the minutes
   int minutes = seconds / 60;
   // for each minute reducing the seconds
@@ -675,17 +742,13 @@ char *format_time(int seconds) {
     seconds -= 60;
 
   // 00:00
-  char *time = malloc(sizeof(char) * 6);
   snprintf(time, 6, "%.2d:%.2d", minutes, seconds);
-  return time;
 }
 
 void volume_update(int volume) {
   // removing previous volume (without removal there could be bugs related to
   // number of chars
-  wmove(manager->player_bar, 2, manager->screen_width - 15);
-  for (int i = 0; i < 11; i++)
-    waddch(manager->player_bar, ' ');
+  erase_text(manager->player_bar, 2, manager->screen_width - 15, 11);
 
   mvwprintw(manager->player_bar, 2, manager->screen_width - 15, "[Vol: %d%%]",
             volume);
@@ -811,4 +874,26 @@ int music_folder_window() {
   free(manager->library_selection);
 
   return selection;
+}
+
+void print_text(WINDOW *win, int y_pos, int x_pos, char *text,
+                size_t text_len) {}
+
+void erase_text(WINDOW *win, int y_pos, int x_pos, size_t lenght) {
+  wmove(win, y_pos, x_pos);
+  for (int i = 0; i < lenght; i++)
+    waddch(win, ' ');
+}
+
+void print_loop_status(WINDOW *win, int y_pos, int x_pos) {
+  switch (settings->loop) {
+  case QUEUE:
+    mvwprintw(win, y_pos, x_pos, "%s%s", LOOP_TEXT, QUEUE_TEXT);
+    break;
+  case TRACK:
+    mvwprintw(win, y_pos, x_pos, "%s%s", LOOP_TEXT, TRACK_TEXT);
+    break;
+  case NONE:
+    mvwprintw(win, y_pos, x_pos, "%s%s", LOOP_TEXT, NONE_TEXT);
+  }
 }

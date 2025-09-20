@@ -11,12 +11,9 @@
 #include <ncurses.h>
 #include <pthread.h>
 #include <stdbool.h>
-#include <stdio.h>
 #include <unistd.h>
 
-#define APP_VERSION 0.5.5
-
-APIResponse response;
+#define APP_VERSION 0.6
 
 MusicLibrary *library = NULL;
 Server *server = NULL;
@@ -42,7 +39,7 @@ int main() {
   // initializing program data
   init_curl();
   srand(time(NULL));
-  library = malloc(sizeof(MusicLibrary));
+  library = calloc(1, sizeof(MusicLibrary));
 
   init_curses();
 
@@ -131,20 +128,21 @@ void init_curl() {
   curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
 }
 
-// makes api calls to the server and fills structs
+// getting the music folders and making the user choose one
 // return true if execution was successful, false if there were errors
 // TODO: add check for ResponseAPI after calls
 bool get_data_from_server() {
+  APIResponse *response;
   char *url = url_formatter(server, "getMusicFolders", "");
 
-  CURLcode call_code = call_api(url, &response, curl);
+  CURLcode call_code = call_api(url, response, curl);
   if (call_code != CURLE_OK) {
     error_window("Encountered error while retrieving data from server");
     return false;
   }
   free(url);
-  MusicFolder *folder = parse_music_folders(response.data);
-  free(response.data);
+  MusicFolder *folder = parse_music_folders(response->data);
+  free(response->data);
   library->folder_list = folder;
 
   library->folders_count = count_folders(library->folder_list);
@@ -154,64 +152,6 @@ bool get_data_from_server() {
   if (library->selected_folder == -1)
     return false;
 
-  // artists
-  char *call_param =
-      malloc(strlen("&musicFolderId=") +
-             strlen(library->folder_list[library->selected_folder].id) + 1);
-  sprintf(call_param, "&musicFolderId=%s",
-          library->folder_list[library->selected_folder].id);
-  url = url_formatter(server, "getIndexes", call_param);
-  call_code = call_api(url, &response, curl);
-  if (call_code != CURLE_OK) {
-    error_window("Encountered error while retrieving data from server");
-    return false;
-  }
-  free(url); // need to handle url like that (can' t do inline call) to prevent
-             // memory leaks
-  folder->artists = parse_artists(response.data);
-  free(call_param);
-  free(response.data);
-
-  folder->artists_count = 0;
-  for (Artist *a = folder->artists; a; a = a->next) {
-    a->albums_dir = NULL;
-    // for every artists i get it's AlbumDirectory filled with Albums
-    call_param = malloc(strlen("&id=") + strlen(a->id) + 1);
-    sprintf(call_param, "&id=%s", a->id);
-    url = url_formatter(server, "getMusicDirectory", call_param);
-    call_code = call_api(url, &response, curl);
-    if (call_code != CURLE_OK) {
-      error_window("Encountered error while retrieving data from server");
-      return false;
-    }
-    free(url);
-    a->albums_dir = parse_albums(response.data);
-    free(call_param);
-    free(response.data);
-    folder->artists_count++;
-
-    // and for every Album i get it's SongsDirectory filled with Songs
-    Album *al = a->albums_dir->albums;
-    al->songs_dir = NULL;
-    for (int i = 0; i < a->albums_dir->album_count && al != NULL; i++) {
-      call_param = malloc(strlen("&id=") + strlen(al->id) + 1);
-      sprintf(call_param, "&id=%s", al->id);
-      url = url_formatter(server, "getMusicDirectory", call_param);
-      call_code = call_api(url, &response, curl);
-      if (call_code != CURLE_OK) {
-        error_window("Encountered error while retrieving data from server");
-        return false;
-      }
-      free(url);
-
-      al->songs_dir = parse_songs(response.data);
-
-      free(call_param);
-      free(response.data);
-
-      al = al->next;
-    }
-  }
   return true;
 }
 

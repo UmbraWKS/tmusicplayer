@@ -308,7 +308,6 @@ AlbumsDirectory *parse_albums(const char *xml_string) {
   xmlDocPtr doc;
   xmlNodePtr root, dir_node, child_node;
   AlbumsDirectory *dir = calloc(1, sizeof(AlbumsDirectory));
-  dir->next = NULL;
   dir->albums = NULL;
 
   doc = xmlReadMemory(xml_string, strlen(xml_string), "file.xml", NULL, 0);
@@ -407,7 +406,6 @@ SongsDirectory *parse_songs(const char *xml_string) {
   xmlDocPtr doc;
   xmlNodePtr root, dir_node, child;
   SongsDirectory *dir = calloc(1, sizeof(SongsDirectory));
-  dir->next = NULL;
   dir->songs = NULL;
 
   doc = xmlReadMemory(xml_string, strlen(xml_string), "file.xml", NULL, 0);
@@ -514,9 +512,6 @@ SongsDirectory *parse_songs(const char *xml_string) {
           xmlFree(tmp);
 
           dir->songs = add_song_to_list(dir->songs, song);
-          // since add_song_to_list duplicates the song i will free the song
-          // here
-          free(song);
         }
       }
     }

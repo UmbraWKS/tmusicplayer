@@ -9,6 +9,12 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+
+void handle_shutdown();
+void handle_eof_event(mpv_event_end_file *eof);
+void handle_playback_restart_event();
+void handle_time_pos_event(mpv_event_property *prop);
+
 /*
     By passing the url it automatically handles buffering and streaming,
     the file is played while it downloads
@@ -44,6 +50,11 @@ void *init_player(void *arg) {
   check_error(mpv_set_option_string(ctx, "input-vo-keyboard", "no"));
   check_error(mpv_set_option_string(ctx, "input-terminal", "no"));
   check_error(mpv_set_option_string(ctx, "vo", "null"));
+  // setting cache limits
+  check_error(mpv_set_option_string(ctx, "cache", "yes"));
+  check_error(mpv_set_option_string(ctx, "demuxer-max-bytes", "50M"));
+  check_error(mpv_set_option_string(ctx, "demuxer-max-back-bytes", "10M"));
+  check_error(mpv_set_option_string(ctx, "cache-secs", "15"));
   // initializing the player
   check_error(mpv_initialize(ctx));
   status = MPV_STATUS_READY;
@@ -51,104 +62,132 @@ void *init_player(void *arg) {
 
   // listening to time advancement in song
   mpv_observe_property(ctx, 1, "time-pos", MPV_FORMAT_DOUBLE);
-  // player loop
-  // TODO: rewrite the whole loop (possibly function) it's unreadable
+
+  mpv_main_loop();
+
+  // manually sending one last status
+  status = MPV_STATUS_IDLE;
+  playback_status(status);
+  return NULL;
+}
+
+void handle_shutdown() {
+  pthread_mutex_lock(&mpv_mutex);
+  status = MPV_STATUS_CLOSING;
+  status_changed = true;
+  mpv_terminate_destroy(ctx);
+  ctx = NULL;
+  pthread_mutex_unlock(&mpv_mutex);
+  return;
+}
+
+void handle_eof_event(mpv_event_end_file *eof) {
+  if (eof->reason == MPV_END_FILE_REASON_STOP)
+    return;
+  // finding the song in the list
+  if (settings->loop == TRACK) {
+    play_song(user_selection.playing_song->id);
+    return;
+  }
+
+  Song *tmp = get_song_from_id(queue->songs, user_selection.playing_song->id);
+  // playing
+  if (tmp && tmp->next) {
+    tmp = tmp->next;
+    play_song(tmp->id);
+  } else {
+    // checking loop status
+    if (settings->loop == QUEUE && queue->songs)
+      play_song(queue->songs->id);
+    else if (settings->loop == NONE) {
+      status = MPV_STATUS_NOT_PLAYING;
+      status_changed = true;
+    }
+  }
+}
+
+void handle_playback_restart_event() {
+  // song was skipped while status PAUSED
+  if (status == MPV_STATUS_PAUSED)
+    play_player();
+
+  status = MPV_STATUS_PLAYING;
+  status_changed = true;
+}
+
+void handle_time_pos_event(mpv_event_property *prop) {
+  if (prop->format != MPV_FORMAT_DOUBLE && !prop->data)
+    return;
+  double time_stamp = *(double *)prop->data;
+  /*
+    if the user skips 5 or more seconds this prevents the scrobble from
+    being called (this happens when a song is skipped because the seek
+    100% triggers time-pos) in case of user-determined seek option (if
+    ever implemented) this will not affect it, as the call to the api
+    will be made the second after.
+    */
+
+  bool jumped;
+
+  update_mpris_position(time_stamp);
+
+  // i only care about seconds, so i am limiting function call to second
+  // change only
+  if ((int)time_stamp != time_passed) {
+
+    jumped = ((int)time_stamp - time_passed) > 5;
+
+    playback_time((int)time_stamp);
+    time_passed = (int)time_stamp;
+  }
+
+  if (settings->scrobble && !has_scrobbled &&
+      (time_passed >=
+       (int)(user_selection.song->duration * settings->scrobble_time) / 100) &&
+      !jumped) {
+    // leaving the param "submission" defaut(true)
+    uint64_t time_in_millis = current_time_millis();
+    int time_length =
+        snprintf(NULL, 0, "%llu", (unsigned long long)time_in_millis);
+    size_t params_size = strlen("&id=") +
+                         strlen(user_selection.playing_song->id) +
+                         strlen("&time=") + time_length + 1;
+    char *params = malloc(params_size);
+    snprintf(params, params_size, "&id=%s&time=%llu",
+             user_selection.playing_song->id,
+             (unsigned long long)time_in_millis);
+    CURLcode code = call_api(url_formatter(server, "scrobble", params),
+                             &scrobble_response, curl);
+    has_scrobbled = true;
+    free(params);
+    if (code != CURLE_OK) {
+      // TODO: print to error window
+    }
+    // TODO: verify APIResponse
+  }
+}
+
+void mpv_main_loop() {
   while (1) {
     mpv_event *event = mpv_wait_event(ctx, 1000);
 
-    if (event->event_id == MPV_EVENT_SHUTDOWN) {
+    switch (event->event_id) {
+    case MPV_EVENT_SHUTDOWN:
+      handle_shutdown();
       break;
-      // when a song ends playing
-
-      // TODO: append the next song and after the end of what is playing check
-      // if it changed in the queue and handle it appropriately
-    } else if (event->event_id == MPV_EVENT_END_FILE) {
-      // not starting the previous song if the current one has been manually
-      // replaced
-      mpv_event_end_file *eof = (mpv_event_end_file *)event->data;
-      if (eof->reason != MPV_END_FILE_REASON_STOP) {
-        // finding the song in the list
-        if (settings->loop != TRACK) {
-
-          Song *tmp =
-              get_song_from_id(queue->songs, user_selection.playing_song->id);
-          // playing
-          if (tmp && tmp->next) {
-            tmp = tmp->next;
-            play_song(tmp->id);
-          } else {
-            // checking loop status
-            if (settings->loop == QUEUE && queue->songs)
-              play_song(queue->songs->id);
-            else if (settings->loop == NONE) {
-              status = MPV_STATUS_NOT_PLAYING;
-              status_changed = true;
-            }
-          }
-        } else { // loop in TRACK status
-          play_song(user_selection.playing_song->id);
-        }
-      }
-    } else if (event->event_id == MPV_EVENT_PLAYBACK_RESTART) {
-      // song was skipped while status PAUSED
-      if (status == MPV_STATUS_PAUSED)
-        play_player();
-
-      status = MPV_STATUS_PLAYING;
-      status_changed = true;
-    } else if (event->event_id == MPV_EVENT_PROPERTY_CHANGE) {
+    case MPV_EVENT_END_FILE:
+      handle_eof_event((mpv_event_end_file *)event->data);
+      break;
+    case MPV_EVENT_PLAYBACK_RESTART:
+      handle_playback_restart_event();
+      break;
+    case MPV_EVENT_PROPERTY_CHANGE: {
       mpv_event_property *prop = (mpv_event_property *)event->data;
-      if (strcmp(prop->name, "time-pos") == 0 && status == MPV_STATUS_PLAYING) {
-        if (prop->format == MPV_FORMAT_DOUBLE && prop->data) {
-          double time_stamp = *(double *)prop->data;
-          /*
-            if the user skips 5 or more seconds this prevents the scrobble from
-            being called (this happens when a song is skipped because the seek
-            100% triggers time-pos) in case of user-determined seek option (if
-            ever implemented) this will not affect it, as the call to the api
-            will be made the second after.
-          */
-          bool jumped;
-
-          update_mpris_position(time_stamp);
-
-          // i only care about seconds, so i am limiting function call to second
-          // change only
-          if ((int)time_stamp != time_passed) {
-
-            jumped = ((int)time_stamp - time_passed) > 5;
-
-            playback_time((int)time_stamp);
-            time_passed = (int)time_stamp;
-          }
-
-          if (settings->scrobble && !has_scrobbled &&
-              (time_passed >=
-               (int)(user_selection.song->duration * settings->scrobble_time) /
-                   100) &&
-              !jumped) {
-            // leaving the param "submission" defaut(true)
-            uint64_t time_in_millis = current_time_millis();
-            int time_length =
-                snprintf(NULL, 0, "%llu", (unsigned long long)time_in_millis);
-            size_t params_size = strlen("&id=") +
-                                 strlen(user_selection.playing_song->id) +
-                                 strlen("&time=") + time_length + 1;
-            char *params = malloc(params_size);
-            snprintf(params, params_size, "&id=%s&time=%llu",
-                     user_selection.playing_song->id,
-                     (unsigned long long)time_in_millis);
-            CURLcode code = call_api(url_formatter(server, "scrobble", params),
-                                     &scrobble_response, curl);
-            has_scrobbled = true;
-            free(params);
-            if (code != CURLE_OK) {
-              // TODO: print to error window
-            }
-            // TODO: verify APIResponse
-          }
-        }
-      }
+      if (strcmp(prop->name, "time-pos") == 0 && status == MPV_STATUS_PLAYING)
+        handle_time_pos_event(prop);
+    } break;
+    default:
+      break;
     }
     // calling when the status of the song playing changes
     if (status_changed) {
@@ -156,16 +195,9 @@ void *init_player(void *arg) {
       update_mpris_status(convert_status(status));
       status_changed = false;
     }
+    if (status == MPV_STATUS_CLOSING)
+      return;
   }
-
-  pthread_mutex_lock(&mpv_mutex);
-  status = MPV_STATUS_CLOSING;
-  mpv_terminate_destroy(ctx);
-  ctx = NULL;
-  status = MPV_STATUS_IDLE;
-  playback_status(status);
-  pthread_mutex_unlock(&mpv_mutex);
-  return NULL;
 }
 
 void start_new_playback(char *id) {

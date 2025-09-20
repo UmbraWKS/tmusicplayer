@@ -1,3 +1,4 @@
+#include "../../data/data_struct.h"
 #include <curl/curl.h>
 #include <openssl/md5.h>
 #include <stdio.h>
@@ -45,3 +46,8 @@ char *url_formatter(Server *server, char *function_call,
 // returns the params to pass to url_formatter for the song to play
 //  it reqquires the song id
 char *song_params(char *id);
+/*
+ * calls the api to get a the songs in a passed Album
+ * return NULL if there is an error in the api call
+ */
+APIResponse *get_songs_from_server(Album *album);

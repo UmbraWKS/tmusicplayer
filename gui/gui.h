@@ -18,9 +18,22 @@
 // the number of windows to show in the bottom part
 typedef enum {
   LAYOUT_ARTIST_NAVIGATION = 0,
-  LAYOUT_PLAYLIST_NAVIGATION = 1,
-  LAYOUT_QUEUE_NAVIGATION = 2
+  LAYOUT_PLAYLIST_NAVIGATION,
+  LAYOUT_QUEUE_NAVIGATION
 } layout_type_t;
+
+// identificator for panels in Artist navigation
+typedef enum {
+  ARTISTS_PANEL = 0,
+  ALBUMS_PANEL,
+  SONGS_PANEL
+} artist_nav_panels_t;
+
+// identificator for panels in Playlist navigation
+typedef enum { PLAYLISTS_PANEL = 0, P_SONGS_PANEL } playlist_nav_panel_t;
+
+// identificator for panels in Queue navigation
+typedef enum { QUEUE_PANEL = 0 } queue_nav_panels_t;
 
 /*
  * a panel contains the data of a menu
@@ -74,10 +87,10 @@ void handle_input(int ch);
 /* important to unpost the menu and free the items before calling the populate
  since the number of items inside the menu could change i prefer to delete the
  menu and create it from scrath every time intead of risking memory leaks*/
-void populate_artists_window();
-void populate_albums_window();
-void populate_songs_window();
-void populate_queue_window();
+bool populate_artists_window();
+bool populate_albums_window();
+bool populate_songs_window();
+bool populate_queue_window();
 // what the program does when ENTER is pressed
 void enter_input_handling();
 WINDOW *create_top_bar();
@@ -96,7 +109,7 @@ void refresh_screen();
 // removes all content in the list of items of specified menu
 void remove_items(menu_panel_t *panel);
 // converts seconds to a string mm:ss or m:ss
-char *format_time(int seconds);
+void format_time(int seconds, char time[6]);
 // shows the song total duration on player bar
 void song_time(int time);
 // show the passed error message, the user can only press q to close the
@@ -109,3 +122,7 @@ void error_window(const char *message);
  * it has it's unique loop and input determination
  */
 int music_folder_window();
+// erase text from a window at specified position and lenght of removal
+void erase_text(WINDOW *win, int y_pos, int x_pos, size_t lenght);
+// prints on the passed window the current loop status
+void print_loop_status(WINDOW *win, int y_pos, int x_pos);

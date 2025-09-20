@@ -14,8 +14,9 @@
 - pkg-config
 - glib2
 - gcc
+- make
 
-Note: the "devel" variant of the above packages might be needed
+Note: on some distros the "devel" variant of the packages might be needed
 
 ## Compiling 
   

@@ -43,6 +43,8 @@ extern mpris_player_t *mpris_ctx;
 
 // initializes the mpv_handle and sets all the parameters needed by the player
 void *init_player(void *arg);
+// the loop of the player
+void mpv_main_loop();
 // to be called after a new queue is created, it starts playing the queue from
 // the first song
 void start_new_playback(char *id);
