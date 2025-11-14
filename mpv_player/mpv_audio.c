@@ -10,10 +10,11 @@
 #include <string.h>
 #include <time.h>
 
-void handle_shutdown();
 void handle_eof_event(mpv_event_end_file *eof);
 void handle_playback_restart_event();
 void handle_time_pos_event(mpv_event_property *prop);
+// seeks to the percentage passed via argument values accepted (0-100)
+void seek_by_percent(uint8_t n);
 
 /*
     By passing the url it automatically handles buffering and streaming,
@@ -29,6 +30,11 @@ bool status_changed = false;
 uint32_t time_passed = 0;
 // variable that tracks if the song playing has called scrobble api
 bool has_scrobbled = false;
+/*
+ * a timer that is set to 5 when the user wants to go to the previous song, if
+ * pressed again before getting to 0 plays the previous song
+ */
+uint8_t prev_timer = 0;
 
 APIResponse scrobble_response;
 
@@ -71,18 +77,10 @@ void *init_player(void *arg) {
   return NULL;
 }
 
-void handle_shutdown() {
-  pthread_mutex_lock(&mpv_mutex);
-  status = MPV_STATUS_CLOSING;
-  status_changed = true;
-  mpv_terminate_destroy(ctx);
-  ctx = NULL;
-  pthread_mutex_unlock(&mpv_mutex);
-  return;
-}
-
 void handle_eof_event(mpv_event_end_file *eof) {
   if (eof->reason == MPV_END_FILE_REASON_STOP)
+    return;
+  if (status == MPV_STATUS_CLOSING)
     return;
   // finding the song in the list
   if (settings->loop == TRACK) {
@@ -139,6 +137,10 @@ void handle_time_pos_event(mpv_event_property *prop) {
 
     playback_time((int)time_stamp);
     time_passed = (int)time_stamp;
+
+    // reducing the time on the timer every second
+    if (prev_timer != 0)
+      prev_timer--;
   }
 
   if (settings->scrobble && !has_scrobbled &&
@@ -169,12 +171,17 @@ void handle_time_pos_event(mpv_event_property *prop) {
 
 void mpv_main_loop() {
   while (1) {
+
+    // calling when the status of the song playing changes
+    if (status_changed) {
+      playback_status(status);
+      update_mpris_status(convert_status(status));
+      status_changed = false;
+    }
+
     mpv_event *event = mpv_wait_event(ctx, 1000);
 
     switch (event->event_id) {
-    case MPV_EVENT_SHUTDOWN:
-      handle_shutdown();
-      break;
     case MPV_EVENT_END_FILE:
       handle_eof_event((mpv_event_end_file *)event->data);
       break;
@@ -186,17 +193,13 @@ void mpv_main_loop() {
       if (strcmp(prop->name, "time-pos") == 0 && status == MPV_STATUS_PLAYING)
         handle_time_pos_event(prop);
     } break;
+    case MPV_EVENT_SHUTDOWN:
+      mpv_terminate_destroy(ctx);
+      ctx = NULL;
+      return;
     default:
       break;
     }
-    // calling when the status of the song playing changes
-    if (status_changed) {
-      playback_status(status);
-      update_mpris_status(convert_status(status));
-      status_changed = false;
-    }
-    if (status == MPV_STATUS_CLOSING)
-      return;
   }
 }
 
@@ -325,33 +328,58 @@ void play_player() {
 void shutdown_player() {
   pthread_mutex_lock(&mpv_mutex);
   if (ctx) {
+    status = MPV_STATUS_CLOSING;
+    status_changed = true;
     const char *cmd[] = {"quit", NULL};
     mpv_command_async(ctx, 0, cmd);
   }
-  // no need to set ctx to NULL, it happens when exiting the main loop
   pthread_mutex_unlock(&mpv_mutex);
 }
 
 void skip_song() {
-  pthread_mutex_lock(&mpv_mutex);
-  if (ctx) {
-    // making it go to 100%
-    const char *cmd[] = {"seek", "100", "absolute-percent", NULL};
-    mpv_command_async(ctx, 0, cmd);
-  }
-  pthread_mutex_unlock(&mpv_mutex);
+  // seeking to 100% triggers eof
+  seek_by_percent(100);
+  // after skip returning back is allowed straight away
+  prev_timer = 5;
 }
 
 void previous_song() {
-  Song *tmp, *prev = NULL;
-  tmp = queue->songs;
-  while (tmp && strcmp(tmp->id, user_selection.playing_song->id) != 0) {
-    prev = tmp;
-    tmp = tmp->next;
+  // just set the playback time to 0%
+  if (prev_timer == 0) {
+    if (!ctx)
+      return;
+
+    seek_by_percent(0);
+    // setting the timer
+    prev_timer = 5;
+  } else {
+    Song *tmp, *prev = NULL;
+    tmp = queue->songs;
+    while (tmp && strcmp(tmp->id, user_selection.playing_song->id) != 0) {
+      prev = tmp;
+      tmp = tmp->next;
+    }
+    // the current has been found and there is one before
+    if (tmp && prev)
+      play_song(prev->id);
+    // resetting the timer to allow multiple skips easily
+    prev_timer = 5;
   }
-  // the current has been found and there is one before
-  if (tmp && prev)
-    play_song(prev->id);
+}
+
+void seek_by_percent(uint8_t n) {
+  if (n < 0 || n > 100)
+    return;
+  if (!ctx)
+    return;
+  // converting n to string for the command
+  char n_str[4];
+  snprintf(n_str, sizeof(n_str), "%u", n);
+
+  pthread_mutex_lock(&mpv_mutex);
+  const char *cmd[] = {"seek", n_str, "absolute-percent", NULL};
+  mpv_command_async(ctx, 0, cmd);
+  pthread_mutex_unlock(&mpv_mutex);
 }
 
 static inline void check_error(int status) {

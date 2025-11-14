@@ -47,6 +47,8 @@ void init_curses() {
   halfdelay(1);
   keypad(stdscr, TRUE);
   curs_set(0);
+  // setting ESC to 25ms delay
+  ESCDELAY = 25;
   refresh();
 
   if (!manager) {
@@ -210,11 +212,12 @@ void handle_input(int ch) {
       pthread_join(mpv_thread, NULL);
     }
 
-    free_song_list(queue->songs);
-    free(queue);
+    if (queue != NULL) {
+      free_song_list(queue->songs);
+      free(queue);
+    }
     free_library(library);
     free(manager);
-    endwin();
     return;
   case '-': // decrease volume
     if (get_mpv_status() != MPV_STATUS_IDLE)
@@ -224,7 +227,7 @@ void handle_input(int ch) {
     if (get_mpv_status() != MPV_STATUS_IDLE)
       volume_up();
     break;
-  case '1': // these cases handles the top bar selection
+  case '1': // these cases handle the top bar selection
             // artist layout
     if (manager->current_layout != LAYOUT_ARTIST_NAVIGATION) {
       remove_panel_windows(manager->panels_count);
@@ -273,10 +276,12 @@ void handle_input(int ch) {
     }
 
     break;
-  case '\n': // ENTER - select
+  case KEY_RIGHT: // KEY_RIGHT - select
+  case '\n':      // ENTER - select
     enter_input_handling();
     break;
-  case 27: // ESC - back
+  case KEY_LEFT: // KEY_LEFT- back
+  case 27:       // ESC - back
     if (manager->current_content_window == SONGS_PANEL) {
 
       // freeing the menu
@@ -385,7 +390,7 @@ void handle_input(int ch) {
   doupdate();
 }
 
-// TODO: handle refresh screen for musicFolder selection and error_window
+// TODO: handle refresh screen for musicFolder selection
 void refresh_screen() {
   for (int i = 0; i < manager->panels_count; i++) {
     remove_menu(&manager->panels[i]);
@@ -411,7 +416,11 @@ void refresh_screen() {
   manager->top_bar = create_top_bar();
   manager->player_bar = create_player_bar();
   create_content_windows();
+
   doupdate();
+
+  if (manager->error_window != NULL)
+    error_window(manager->error_window->message);
 }
 
 void remove_panel_windows(int panels) {
@@ -626,11 +635,13 @@ void enter_input_handling() {
       return;
     if (populate_songs_window())
       manager->current_content_window = SONGS_PANEL;
+
   } else if (manager->current_layout == LAYOUT_ARTIST_NAVIGATION &&
              manager->current_content_window == SONGS_PANEL) {
 
     Album *album = item_userptr(manager->panels[ALBUMS_PANEL].selected_item);
     if (album == NULL)
+
       return;
     Song *selected_song =
         item_userptr(manager->panels[SONGS_PANEL].selected_item);
@@ -759,14 +770,27 @@ void error_window(const char *message) {
   if (stdscr == NULL)
     init_curses();
 
-  if (manager->error_window != NULL)
+  if (manager->error_window != NULL) {
     free(manager->error_window);
+    manager->error_window = NULL;
+  }
 
   manager->error_window = calloc(1, sizeof(error_window_t));
 
+  manager->error_window->message = message;
+  const char close_window_message[] = "Press 'q' to close this window";
+
   manager->error_window->w_height = 4;
-  if (manager->screen_width > strlen(message) + 2)
-    manager->error_window->w_width = strlen(message) + 2;
+  // determinating which text string is longer
+  uint16_t max_text_length;
+  if (strlen(message) < strlen(close_window_message))
+    max_text_length = strlen(close_window_message);
+  else
+    max_text_length = strlen(message);
+
+  // error window width based on the text to put in it
+  if (manager->screen_width > max_text_length + 2)
+    manager->error_window->w_width = max_text_length + 2;
   else
     manager->error_window->w_width = manager->screen_width - 2;
   manager->error_window->window =
@@ -775,17 +799,23 @@ void error_window(const char *message) {
   box(manager->error_window->window, 0, 0);
   refresh();
   mvwprintw(manager->error_window->window, 1, 1, "%s", message);
-  mvwprintw(manager->error_window->window, 2, 1, "Press 'CTRL + q' to close");
+  mvwprintw(manager->error_window->window, 2, 1, close_window_message);
   wrefresh(manager->error_window->window);
 
   int ch;
   timeout(16);
   while (1) {
     ch = getch();
-    if (ch == 17) {
+    if (ch == 'q') {
       free(manager->error_window);
       manager->error_window = NULL;
       break;
+      // since the error window is input blocking i have to handle the screen
+      // resize here, all the operations required are handled in refresh_screen
+      // and above
+    } else if (ch == KEY_RESIZE) {
+      refresh_screen();
+      return;
     }
   }
   // if the top bar doesn't exists the error appeared before initialing ncurses

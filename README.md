@@ -68,8 +68,8 @@ Note: on some distros the "devel" variant of the packages might be needed
 |---------------|--------------------------------|
 | `p`           | Play/Pause toggle              |
 | `-` / `=`     | Lower/Raise volume by 5        |
-| `ESC`         | Go back in navigation          |
-| `ENTER`       | Select                         |
+| `ESC` / `←`   | Go back in navigation          |
+| `ENTER` / `→` | Select                         |
 | `↑` / `↓`     | Move in the menu               |
 | `1`/`2`/`3`   | Switch TAB in top bar          |
 | `q`           | Quit                           |

@@ -48,7 +48,10 @@ typedef struct {
   int w_width, w_height;
 } menu_panel_t;
 
-// error window
+/*
+ * the error window is an input blocking window that shows an error and a static
+ * message, the only interaction available is 'q' to close it
+ */
 typedef struct {
   WINDOW *window;
   const char *message;
@@ -70,7 +73,7 @@ typedef struct {
   error_window_t *error_window;
   /*
    * menu window used to select the musicFolder at
-   * startup in the user has more than one
+   * startup if the user has more than one
    */
   menu_panel_t *library_selection;
 
