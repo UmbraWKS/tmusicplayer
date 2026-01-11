@@ -230,11 +230,13 @@ mpv_status_t get_mpv_status() { return status; }
 // volume change when ctx has not been created is not possible
 void volume_up() {
   const char **cmd;
+  char vol_step[2];
+  snprintf(vol_step, sizeof(vol_step), "%d", settings->vol_step);
   pthread_mutex_lock(&mpv_mutex);
-  if (ctx && settings->volume + 5 <= 100) {
-    cmd = (const char *[]){"add", "volume", "5", NULL};
-    settings->volume += 5;
-  } else if (ctx && settings->volume + 5 > 100) {
+  if (ctx && settings->volume + settings->vol_step <= 100) {
+    cmd = (const char *[]){"add", "volume", vol_step, NULL};
+    settings->volume += settings->vol_step;
+  } else if (ctx && settings->volume + settings->vol_step > 100) {
     cmd = (const char *[]){"set", "volume", "100", NULL};
     settings->volume = 100;
   }
@@ -246,11 +248,13 @@ void volume_up() {
 
 void volume_down() {
   const char **cmd;
+  char vol_step[3];
+  snprintf(vol_step, sizeof(vol_step), "-%d", settings->vol_step);
   pthread_mutex_lock(&mpv_mutex);
-  if (ctx && settings->volume - 5 >= 0) {
-    cmd = (const char *[]){"add", "volume", "-5", NULL};
-    settings->volume -= 5;
-  } else if (ctx && settings->volume - 5 < 0) {
+  if (ctx && settings->volume - settings->vol_step >= 0) {
+    cmd = (const char *[]){"add", "volume", vol_step, NULL};
+    settings->volume -= settings->vol_step;
+  } else if (ctx && settings->volume - settings->vol_step < 0) {
     cmd = (const char *[]){"set", "volume", "0", NULL};
     settings->volume = 0;
   }

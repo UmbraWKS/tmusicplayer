@@ -42,11 +42,13 @@ Note: on some distros the "devel" variant of the packages might be needed
 
 ```json 
   {
-    "volume": 50,
-    "playlist-loop": 0,
-    "scrobble": false,
-    "__comment":"percent of song played before scrobbling",
-    "scrobble-time": 30
+    "volume":50,
+    "__comment_1":"increase\/decrease of volume for a single click (min 1, max 5)",
+    "vol-step":5,
+    "playlist-loop":0,
+    "scrobble":false,
+    "__comment_2":"percent of song played before scrobbling",
+    "scrobble-time":30
   }
 ```
 

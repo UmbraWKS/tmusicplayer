@@ -26,6 +26,7 @@ extern const char *settings_file;
 typedef struct Settings {
   /* default values in files.c */
   uint8_t volume;
+  uint8_t vol_step;
   loop_status_t loop;
   bool scrobble;
   // the percentage of playtime at which scrobble api call is made

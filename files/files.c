@@ -40,9 +40,10 @@ int read_settings(Settings *settings) {
   if (obj == NULL)
     return -1;
 
-  json_object *volume, *playlist_loop, *scrobble, *scrobble_time;
+  json_object *volume, *vol_step, *playlist_loop, *scrobble, *scrobble_time;
 
   json_object_object_get_ex(obj, "volume", &volume);
+  json_object_object_get_ex(obj, "vol-step", &vol_step);
   json_object_object_get_ex(obj, "playlist-loop", &playlist_loop);
   json_object_object_get_ex(obj, "scrobble", &scrobble);
   json_object_object_get_ex(obj, "scrobble-time", &scrobble_time);
@@ -52,6 +53,13 @@ int read_settings(Settings *settings) {
     settings->volume = v;
   else
     settings->volume = def_volume;
+
+  uint8_t step = json_object_get_int(vol_step);
+  if (step >= 1 && step <= 5)
+    settings->vol_step = step;
+  else
+    settings->vol_step = 5;
+
   // using a temporary int to convert the value to a loop_status_t
   int tmp = json_object_get_int(playlist_loop);
   if (tmp >= 0 && tmp <= 2)
@@ -135,13 +143,19 @@ bool file_exists(const char *path) {
 void create_settings_file(const char *path) {
   json_object *obj = json_object_new_object();
   json_object_object_add(obj, "volume", json_object_new_int(def_volume));
+  // a comment for the user regarding volume step option
+  json_object_object_add(
+      obj, "__comment_1",
+      json_object_new_string(
+          "increase/decrease of volume for a single click (min 1, max 5"));
+  json_object_object_add(obj, "vol-step", json_object_new_int(5));
   json_object_object_add(obj, "playlist-loop",
                          json_object_new_int((int)def_loop));
   json_object_object_add(obj, "scrobble",
                          json_object_new_boolean(def_scrobble));
   // a comment for the user regarding scrobble_time
   json_object_object_add(
-      obj, "__comment",
+      obj, "__comment_2",
       json_object_new_string("percent of song played before scrobbling"));
 
   json_object_object_add(obj, "scrobble-time",
@@ -154,6 +168,13 @@ void save_settings(Settings *settings) {
   json_object *obj = json_object_new_object();
   json_object_object_add(obj, "volume", json_object_new_int(settings->volume));
 
+  json_object_object_add(
+      obj, "__comment_1",
+      json_object_new_string(
+          "increase/decrease of volume for a single click (min 1, max 5)"));
+  json_object_object_add(obj, "vol-step",
+                         json_object_new_int(settings->vol_step));
+
   json_object_object_add(obj, "playlist-loop",
                          json_object_new_int((int)settings->loop));
 
@@ -161,7 +182,7 @@ void save_settings(Settings *settings) {
                          json_object_new_boolean(settings->scrobble));
 
   json_object_object_add(
-      obj, "__comment",
+      obj, "__comment_2",
       json_object_new_string("percent of song played before scrobbling"));
 
   json_object_object_add(obj, "scrobble-time",
