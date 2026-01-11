@@ -462,7 +462,7 @@ void remove_items(menu_panel_t *panel) {
 bool populate_artists_window() {
   // if the api has alredy been called once there is no need to do it again
   if (library->folder_list[library->selected_folder].artists == NULL) {
-    APIResponse response;
+    APIResponse *response = calloc(1, sizeof(APIResponse));
 
     char *call_param =
         malloc(strlen("&musicFolderId=") +
@@ -470,7 +470,7 @@ bool populate_artists_window() {
     sprintf(call_param, "&musicFolderId=%s",
             library->folder_list[library->selected_folder].id);
     char *url = url_formatter(server, "getIndexes", call_param);
-    CURLcode call_code = call_api(url, &response, curl);
+    CURLcode call_code = call_api(url, response, curl);
     if (call_code != CURLE_OK) {
       error_window("Encountered error while retrieving data from server");
       return false;
@@ -479,8 +479,9 @@ bool populate_artists_window() {
     free(call_param);
 
     library->folder_list[library->selected_folder].artists =
-        parse_artists(response.data);
-    free(response.data);
+        parse_artists(response->data);
+    free(response->data);
+    free(response);
 
     library->folder_list[library->selected_folder].artists_count =
         count_artists(library->folder_list[library->selected_folder].artists);
@@ -507,12 +508,12 @@ bool populate_albums_window() {
   Artist *artist = item_userptr(manager->panels[ARTISTS_PANEL].selected_item);
 
   if (artist->albums_dir == NULL) {
-    APIResponse response;
+    APIResponse *response = calloc(1, sizeof(APIResponse));
 
     char *call_param = malloc(strlen("&id=") + strlen(artist->id) + 1);
     sprintf(call_param, "&id=%s", artist->id);
     char *url = url_formatter(server, "getMusicDirectory", call_param);
-    CURLcode call_code = call_api(url, &response, curl);
+    CURLcode call_code = call_api(url, response, curl);
     if (call_code != CURLE_OK) {
       error_window("Encountered error while retrieving data from server");
       return false;
@@ -520,9 +521,10 @@ bool populate_albums_window() {
     free(url);
     free(call_param);
 
-    artist->albums_dir = parse_albums(response.data);
+    artist->albums_dir = parse_albums(response->data);
 
-    free(response.data);
+    free(response->data);
+    free(response);
   }
 
   Album *al = artist->albums_dir->albums;

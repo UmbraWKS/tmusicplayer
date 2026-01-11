@@ -132,7 +132,7 @@ void init_curl() {
 // return true if execution was successful, false if there were errors
 // TODO: add check for ResponseAPI after calls
 bool get_data_from_server() {
-  APIResponse *response;
+  APIResponse *response = calloc(1, sizeof(APIResponse));
   char *url = url_formatter(server, "getMusicFolders", "");
 
   CURLcode call_code = call_api(url, response, curl);

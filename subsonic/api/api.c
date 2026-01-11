@@ -2,15 +2,11 @@
 #include <curl/curl.h>
 #include <openssl/evp.h>
 
-#define MD5_DIGEST_LENGTH 16
-
 char *salt_generator(int length) {
   char chars[] =
       "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-  int chars_len = sizeof(chars) - 1; // -1 to exclude null terminator
-  char *salt = malloc(length + 1);
-  if (salt == NULL)
-    return NULL;
+  int chars_len = strlen(chars);
+  char *salt = calloc(1, length + 1);
 
   for (int i = 0; i < length; i++)
     salt[i] = chars[rand() % chars_len];
@@ -25,7 +21,7 @@ char *hash_md5(const char *input) {
   unsigned int digest_length;
 
   EVP_MD_CTX *ctx = EVP_MD_CTX_new();
-  if (ctx == NULL)
+  if (!ctx)
     return NULL;
 
   if (EVP_DigestInit_ex(ctx, EVP_md5(), NULL) != 1) {
@@ -46,7 +42,7 @@ char *hash_md5(const char *input) {
   EVP_MD_CTX_free(ctx);
 
   char *hashed_string = malloc(digest_length * 2 + 1);
-  if (hashed_string == NULL)
+  if (!hashed_string)
     return NULL;
 
   // Converting binary hash to hex string
@@ -93,21 +89,19 @@ char *url_formatter(Server *server, char *function_call,
                     char *additional_params) {
   size_t salt_len = 6;
   char *salt = salt_generator(salt_len);
-  if (salt == NULL)
+  if (!salt)
     return NULL;
 
   size_t pass_len = strlen(server->password);
   size_t total_len = pass_len + salt_len + 1;
-  char *pass_salt = malloc(total_len);
-  if (pass_salt == NULL)
-    return NULL;
+  char *pass_salt = calloc(1, total_len);
   // unite password and salt
   strcpy(pass_salt, server->password);
   strcat(pass_salt, salt);
 
   // hash pass and salt
   char *hashed = hash_md5(pass_salt);
-  if (hashed == NULL) {
+  if (!hashed) {
     free(salt);
     free(pass_salt);
     return NULL;
@@ -145,8 +139,12 @@ APIResponse *get_songs_from_server(Album *album) {
   sprintf(call_param, "&id=%s", album->id);
   char *url = url_formatter(server, "getMusicDirectory", call_param);
   CURLcode call_code = call_api(url, response, curl);
-  if (call_code != CURLE_OK)
+  if (call_code != CURLE_OK) {
+    free(url);
+    free(call_param);
+    free(response);
     return NULL;
+  }
 
   free(url);
   free(call_param);
