@@ -3,3 +3,4 @@ tmusicplayer
 *.o
 *.json
 .cache
+*.txt

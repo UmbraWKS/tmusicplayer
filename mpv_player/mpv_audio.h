@@ -1,9 +1,10 @@
 #include "../files/files.h"
-#include <gio/gio.h>
-#include <glib.h>
 #include <mpv/client.h>
 #include <pthread.h>
 #include <stdbool.h>
+#include <stdint.h>
+#include <systemd/sd-bus-vtable.h>
+#include <systemd/sd-bus.h>
 #include <unistd.h>
 
 #ifndef MPV_AUDIO
@@ -18,6 +19,7 @@ typedef enum {
   MPV_STATUS_READY,        // initialized ready to play music
   MPV_STATUS_PLAYING,
   MPV_STATUS_PAUSED,
+  MPV_STATUS_STOPPED,
   MPV_STATUS_CLOSING, // being shutdown
   MPV_STATUS_ERROR    // error during initialization
 } mpv_status_t;
@@ -27,18 +29,16 @@ typedef enum {
 #define MPRIS
 
 typedef struct {
-  gchar *playback_status; // "Playing", "Paused", "Stopped"
-  gchar *loop_status;
-  gfloat volume; // using a different volume because playerctl ranges 0.0 - 1.0
-  gint64 position; // passed time playing
-  GHashTable *metadata;
-  GDBusConnection *connection;
-  GError *error;
-  guint registration_id;
-  guint owner_id;
-} mpris_player_t;
+  bool playing;
+  double position; // microseconds
+  int64_t duration;
+  char *title;
+  char *artist;
+  double volume;
+  char *loop_status;
+} player_state_t;
 
-extern mpris_player_t *mpris_ctx;
+extern sd_bus *bus;
 #endif
 
 // initializes the mpv_handle and sets all the parameters needed by the player
@@ -57,10 +57,15 @@ void play_pause();
 void pause_player();
 // plays
 void play_player();
+// stops the player (mpris definition), the song is reset at 0 and the player
+// pauses
+void stop_player();
 // returns the status of the player
 mpv_status_t get_mpv_status();
 // closes the mpv instance gracefully
 void shutdown_player();
+// returns the current position of the song playing
+int64_t get_current_position();
 /*
   async volume operations, values chnaged by 5 manually limited,
   as mpv doesnt have a built in limit for volume, if values go below/over
@@ -78,29 +83,24 @@ void play_song(char *id);
 void previous_song();
 // return the current time in milliseconds
 uint64_t current_time_millis();
+// seek absolute to passed position
+void seek_absolute(int64_t position);
 
 /* MPRIS functions */
-// initializes the connection
-mpris_player_t *init_mpris_player();
-// frees memory
-void cleanup_player();
-// acquired connection to bus
-void on_name_acquired(GDBusConnection *connection, const gchar *name,
-                      gpointer user_data);
-// closed connection to bus
-void on_name_lost(GDBusConnection *connection, const gchar *name,
-                  gpointer user_data);
-void on_bus_acquired(GDBusConnection *connection, const gchar *name,
-                     gpointer user_data);
+// initializes MPRIS
+void mpris_init();
+void mpris_free();
+// main mpris process
+void mpris_process();
 // converts the mpv_status_t into status for mpris
-const char *convert_status(mpv_status_t status);
-// updates the status of mpris based on user inputs inside the app
-void update_mpris_status(const char *status);
-// updates the mpris volume
-gfloat update_mpris_volume(int volume);
-// updates position metadata
-void update_mpris_position(double time);
+char *convert_status(mpv_status_t status);
 // converts from loop_status_t to char
-const char *convert_loop_status(loop_status_t status);
-// updates the loop status in mpris
-void update_mpris_loop_status(const char *status);
+char *convert_loop_status(loop_status_t status);
+// updating mpris data
+void mpris_metadata_changed(void);
+void mpris_playback_status_changed(void);
+void mpris_loop_status_changed(void);
+void mpris_shuffle_changed(void);
+void mpris_volume_changed(void);
+void mpris_position_changed(void);
+void mpris_seeked(void);

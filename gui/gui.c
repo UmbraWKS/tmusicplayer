@@ -29,6 +29,7 @@ const char NONE_TEXT[] = "NONE";
 const char PLAY_STATUS_IDLE[] = "IDLE";
 const char PLAY_STATUS_PLAYING[] = "PLAYING";
 const char PLAY_STATUS_PAUSED[] = "PAUSED";
+const char PLAY_STATUS_STOPPED[] = "STOPPED";
 
 layout_manager_t *manager = NULL;
 // thread the mpv instance runs on
@@ -220,12 +221,16 @@ void handle_input(int ch) {
     free(manager);
     return;
   case '-': // decrease volume
-    if (get_mpv_status() != MPV_STATUS_IDLE)
+    if (get_mpv_status() != MPV_STATUS_IDLE) {
       volume_down();
+      mpris_volume_changed();
+    }
     break;
   case '=': // increase volume
-    if (get_mpv_status() != MPV_STATUS_IDLE)
+    if (get_mpv_status() != MPV_STATUS_IDLE) {
       volume_up();
+      mpris_volume_changed();
+    }
     break;
   case '1': // these cases handle the top bar selection
             // artist layout
@@ -376,18 +381,26 @@ void handle_input(int ch) {
     break;
   case 'l':
     settings->loop = (loop_status_t)(((int)settings->loop + 1) % 3);
-    erase_text(manager->player_bar, 3, 2, 15);
-    print_loop_status(manager->player_bar, 3, 2);
-
-    update_mpris_loop_status(convert_loop_status(settings->loop));
-
+    update_loop_status_ui();
+    mpris_loop_status_changed();
     wnoutrefresh(manager->player_bar);
+    break;
+  case 'J': // seek 10 seconds back
+    seek_absolute((get_current_position() / 1000000) - 10);
+    break;
+  case 'K': // seek 10 seconds forward
+    seek_absolute((get_current_position() / 1000000) + 10);
     break;
   default:
     break;
   }
   wnoutrefresh(manager->panels[manager->current_content_window].window);
   doupdate();
+}
+
+void update_loop_status_ui() {
+  erase_text(manager->player_bar, 3, 2, 15);
+  print_loop_status(manager->player_bar, 3, 2);
 }
 
 // TODO: handle refresh screen for musicFolder selection
@@ -717,6 +730,9 @@ void playback_status(mpv_status_t status) {
     break;
   case MPV_STATUS_PAUSED:
     play_status = (char *)PLAY_STATUS_PAUSED;
+    break;
+  case MPV_STATUS_STOPPED:
+    play_status = (char *)PLAY_STATUS_STOPPED;
     break;
   default:
     play_status = (char *)PLAY_STATUS_IDLE;

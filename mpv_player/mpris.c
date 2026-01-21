@@ -1,321 +1,447 @@
-#include "glib.h"
 #include "mpv_audio.h"
-#include <string.h>
+#include "mpv_callback.h"
+#include <stdint.h>
+#include <systemd/sd-bus.h>
 
-// TODO: print all g_printerr on error windows
+#define CK(v)                                                                  \
+  do {                                                                         \
+    int tmp = (v);                                                             \
+    if (tmp < 0)                                                               \
+      return tmp;                                                              \
+  } while (0)
 
-static const gchar *mpris_root_xml =
-    "<node>"
-    "  <interface name='org.mpris.MediaPlayer2'>"
-    "    <method name='Raise'/>"
-    "    <method name='Quit'/>"
-    "    <property name='CanQuit' type='b' access='read'/>"
-    "    <property name='CanRaise' type='b' access='read'/>"
-    "    <property name='HasTrackList' type='b' access='read'/>"
-    "    <property name='Identity' type='s' access='read'/>"
-    "    <property name='SupportedUriSchemes' type='as' access='read'/>"
-    "    <property name='SupportedMimeTypes' type='as' access='read'/>"
-    "  </interface>"
-    "</node>";
+sd_bus *bus;
+int mpris_fd = -1;
 
-static const gchar *mpris_player_xml =
-    "<node>"
-    "  <interface name='org.mpris.MediaPlayer2.Player'>"
-    "    <method name='Next'/>"
-    "    <method name='Previous'/>"
-    "    <method name='Pause'/>"
-    "    <method name='PlayPause'/>"
-    "    <method name='Stop'/>"
-    "    <method name='Play'/>"
-    "    <property name='PlaybackStatus' type='s' access='read'/>"
-    "    <property name='Metadata' type='a{sv}' access='read'/>"
-    "    <property name='Volume' type='d' access='readwrite'/>"
-    "    <property name='Position' type='x' access='read'/>"
-    "    <property name='CanGoNext' type='b' access='read'/>"
-    "    <property name='CanGoPrevious' type='b' access='read'/>"
-    "    <property name='CanPlay' type='b' access='read'/>"
-    "    <property name='CanPause' type='b' access='read'/>"
-    "    <property name='CanSeek' type='b' access='read'/>"
-    "    <property name='CanControl' type='b' access='read'/>"
-    "    <property name='LoopStatus' type='s' access='read'/>"
-    "    <signal name='Seeked'>"
-    "      <arg name='Position' type='x'/>"
-    "    </signal>"
-    "  </interface>"
-    "</node>";
+static int mpris_msg_ignore(sd_bus_message *m, void *_userdata,
+                            sd_bus_error *_ret_error) {
+  return sd_bus_reply_method_return(m, "");
+}
 
-mpris_player_t *mpris_ctx = NULL;
+static int mpris_read_false(sd_bus *_bus, const char *_path,
+                            const char *_interface, const char *_property,
+                            sd_bus_message *reply, void *_userdata,
+                            sd_bus_error *_ret_error) {
+  uint32_t b = 0;
+  return sd_bus_message_append_basic(reply, 'b', &b);
+}
 
-static GDBusNodeInfo *mpris_root_node_info = NULL;
-static GDBusNodeInfo *mpris_player_node_info = NULL;
+static int mpris_read_true(sd_bus *_bus, const char *_path,
+                           const char *_interface, const char *_property,
+                           sd_bus_message *reply, void *_userdata,
+                           sd_bus_error *_ret_error) {
+  uint32_t b = 1;
+  return sd_bus_message_append_basic(reply, 'b', &b);
+}
 
-static const GDBusInterfaceVTable mpris_root_vtable = {NULL, NULL, NULL};
-static const GDBusInterfaceVTable mpris_player_vtable = {NULL, NULL, NULL};
+static int mpris_write_ignore(sd_bus *_bus, const char *_path,
+                              const char *_interface, const char *_property,
+                              sd_bus_message *value, void *_userdata,
+                              sd_bus_error *_ret_error) {
+  return sd_bus_reply_method_return(value, "");
+}
 
-mpris_player_t *init_mpris_player() {
-  mpris_player_t *player = g_new0(mpris_player_t, 1);
-  player->playback_status = g_strdup("Stopped");
-  player->loop_status = g_strdup(convert_loop_status(settings->loop));
-  player->volume = update_mpris_volume(settings->volume);
-  player->position = 0; // just an initialization, the updating is dynamic
-  player->metadata = g_hash_table_new_full(g_str_hash, g_str_equal, g_free,
-                                           (GDestroyNotify)g_variant_unref);
-  player->connection = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &player->error);
-  if (!player->connection) {
-    g_printerr("Failed to connect to session bus: %s\n",
-               player->error->message);
-    g_error_free(player->error);
-    return NULL;
+static int mpris_identity(sd_bus *_bus, const char *_path,
+                          const char *_interface, const char *_property,
+                          sd_bus_message *reply, void *_userdata,
+                          sd_bus_error *_ret_error) {
+  const char *id = "tmusicplayer";
+  return sd_bus_message_append_basic(reply, 's', id);
+}
+
+static int mpris_uri_schemes(sd_bus *_bus, const char *_path,
+                             const char *_interface, const char *_property,
+                             sd_bus_message *reply, void *_userdata,
+                             sd_bus_error *_ret_error) {
+  static const char *const schemes[] = {"file", "http", NULL};
+  return sd_bus_message_append_strv(reply, (char **)schemes);
+}
+
+static int mpris_mime_types(sd_bus *_bus, const char *_path,
+                            const char *_interface, const char *_property,
+                            sd_bus_message *reply, void *_userdata,
+                            sd_bus_error *_ret_error) {
+  static const char *const types[] = {NULL};
+  return sd_bus_message_append_strv(reply, (char **)types);
+}
+
+static int mpris_next(sd_bus_message *m, void *_userdata,
+                      sd_bus_error *_ret_error) {
+  skip_song();
+  return sd_bus_reply_method_return(m, "");
+}
+
+static int mpris_prev(sd_bus_message *m, void *_userdata,
+                      sd_bus_error *_ret_error) {
+  previous_song();
+  return sd_bus_reply_method_return(m, "");
+}
+
+static int mpris_pause(sd_bus_message *m, void *_userdata,
+                       sd_bus_error *_ret_error) {
+  pause_player();
+  return sd_bus_reply_method_return(m, "");
+}
+
+static int mpris_toggle_pause(sd_bus_message *m, void *_userdata,
+                              sd_bus_error *_ret_error) {
+  play_pause();
+  return sd_bus_reply_method_return(m, "");
+}
+
+static int mpris_stop(sd_bus_message *m, void *_userdata,
+                      sd_bus_error *_ret_error) {
+  stop_player();
+  return sd_bus_reply_method_return(m, "");
+}
+
+static int mpris_play(sd_bus_message *m, void *_userdata,
+                      sd_bus_error *_ret_error) {
+  play_player();
+  return sd_bus_reply_method_return(m, "");
+}
+
+static int mpris_seek(sd_bus_message *m, void *_userdata,
+                      sd_bus_error *_ret_error) {
+  // seek is used for relative skips, like +- 10s
+  int64_t val = 0;
+  CK(sd_bus_message_read_basic(m, 'x', &val));
+  seek_absolute((get_current_position() + val) / 1000000);
+  return sd_bus_reply_method_return(m, "");
+}
+
+static int mpris_seek_abs(sd_bus_message *m, void *_userdata,
+                          sd_bus_error *_ret_error) {
+  char buf[] = "/1122334455667788";
+  if (user_selection.playing_song)
+    sprintf(buf, "/%s", user_selection.playing_song->id);
+  else
+    sprintf(buf, "/");
+
+  const char *path = NULL;
+  int64_t val = 0;
+  CK(sd_bus_message_read_basic(m, 'o', &path));
+  CK(sd_bus_message_read_basic(m, 'x', &val));
+
+  if (strcmp(buf, path) == 0)
+    seek_absolute(val / 1000000);
+
+  return sd_bus_reply_method_return(m, "");
+}
+
+static int mpris_playback_status(sd_bus *_bus, const char *_path,
+                                 const char *_interface, const char *_property,
+                                 sd_bus_message *reply, void *_userdata,
+                                 sd_bus_error *_ret_error) {
+  const char *s = convert_status(get_mpv_status());
+  return sd_bus_message_append_basic(reply, 's', s);
+}
+
+static int mpris_loop_status(sd_bus *_bus, const char *_path,
+                             const char *_interface, const char *_property,
+                             sd_bus_message *reply, void *_userdata,
+                             sd_bus_error *_ret_error) {
+  const char *t = convert_loop_status(settings->loop);
+  return sd_bus_message_append_basic(reply, 's', t);
+}
+
+static int mpris_set_loop_status(sd_bus *_bus, const char *_path,
+                                 const char *_interface, const char *_property,
+                                 sd_bus_message *value, void *_userdata,
+                                 sd_bus_error *_ret_error) {
+  const char *t = NULL;
+  CK(sd_bus_message_read_basic(value, 's', &t));
+  if (strcmp(t, "None") == 0) {
+    settings->loop = NONE;
+  } else if (strcmp(t, "Track") == 0) {
+    settings->loop = TRACK;
+  } else if (strcmp(t, "Playlist") == 0) {
+    settings->loop = QUEUE;
   }
-
-  return player;
+  update_loop_status_ui();
+  return sd_bus_reply_method_return(value, "");
 }
 
-void cleanup_player() {
-  if (mpris_ctx) {
-    g_free(mpris_ctx->playback_status);
-    g_free(mpris_ctx->loop_status);
-    g_hash_table_destroy(mpris_ctx->metadata);
-    g_free(mpris_ctx);
-    mpris_ctx = NULL;
+static int mpris_rate(sd_bus *_bus, const char *_path, const char *_interface,
+                      const char *_property, sd_bus_message *reply,
+                      void *_userdata, sd_bus_error *_ret_error) {
+  static const double d = 1.0;
+  return sd_bus_message_append_basic(reply, 'd', &d);
+}
+
+static int mpris_shuffle(sd_bus *_bus, const char *_path,
+                         const char *_interface, const char *_property,
+                         sd_bus_message *reply, void *_userdata,
+                         sd_bus_error *_ret_error) {
+  // uint32_t val = queue->shuffle;
+  return sd_bus_message_append_basic(reply, 'b', false);
+}
+
+static int mpris_set_shuffle(sd_bus *_bus, const char *_path,
+                             const char *_interface, const char *_property,
+                             sd_bus_message *value, void *_userdata,
+                             sd_bus_error *_ret_error) {
+  /* TODO: implement
+  uint32_t s = 0;
+  CK(sd_bus_message_read_basic(value, 'b', &s));
+  shuffle = s;
+  update_statusline();
+  */
+  return sd_bus_reply_method_return(value, "");
+}
+
+static int mpris_volume(sd_bus *_bus, const char *_path, const char *_interface,
+                        const char *_property, sd_bus_message *reply,
+                        void *_userdata, sd_bus_error *_ret_error) {
+
+  double volume = (double)settings->volume / 100;
+  return sd_bus_message_append_basic(reply, 'd', &volume);
+}
+
+static int mpris_set_volume(sd_bus *_bus, const char *_path,
+                            const char *_interface, const char *_property,
+                            sd_bus_message *value, void *_userdata,
+                            sd_bus_error *_ret_error) {
+  double vol;
+  CK(sd_bus_message_read_basic(value, 'd', &vol));
+  if (vol < 0.0)
+    vol = 0.0;
+  else if (vol > 1.0)
+    vol = 1.0;
+  int ivol = vol * 100;
+  set_volume(ivol);
+  return sd_bus_reply_method_return(value, "");
+}
+
+static int mpris_position(sd_bus *_bus, const char *_path,
+                          const char *_interface, const char *_property,
+                          sd_bus_message *reply, void *_userdata,
+                          sd_bus_error *_ret_error) {
+  int64_t pos = get_current_position();
+  return sd_bus_message_append_basic(reply, 'x', &pos);
+}
+
+static int mpris_msg_append_simple_dict(sd_bus_message *m, const char *tag,
+                                        char type, const void *val) {
+  const char s[] = {type, 0};
+  CK(sd_bus_message_open_container(m, 'e', "sv"));
+  CK(sd_bus_message_append_basic(m, 's', tag));
+  CK(sd_bus_message_open_container(m, 'v', s));
+  CK(sd_bus_message_append_basic(m, type, val));
+  CK(sd_bus_message_close_container(m));
+  CK(sd_bus_message_close_container(m));
+  return 0;
+}
+
+static int mpris_msg_append_si_dict(sd_bus_message *m, const char *a,
+                                    int32_t i) {
+  return mpris_msg_append_simple_dict(m, a, 'i', &i);
+}
+
+static int mpris_msg_append_sx_dict(sd_bus_message *m, const char *a,
+                                    int64_t i) {
+  return mpris_msg_append_simple_dict(m, a, 'x', &i);
+}
+
+static int mpris_msg_append_ss_dict(sd_bus_message *m, const char *a,
+                                    const char *b) {
+  return mpris_msg_append_simple_dict(m, a, 's', b);
+}
+
+static int mpris_msg_append_so_dict(sd_bus_message *m, const char *a,
+                                    const char *b) {
+  return mpris_msg_append_simple_dict(m, a, 'o', b);
+}
+
+static int mpris_msg_append_sas_dict(sd_bus_message *m, const char *a,
+                                     const char *b) {
+  CK(sd_bus_message_open_container(m, 'e', "sv"));
+  CK(sd_bus_message_append_basic(m, 's', a));
+  CK(sd_bus_message_open_container(m, 'v', "as"));
+  CK(sd_bus_message_open_container(m, 'a', "s"));
+  CK(sd_bus_message_append_basic(m, 's', b));
+  CK(sd_bus_message_close_container(m));
+  CK(sd_bus_message_close_container(m));
+  CK(sd_bus_message_close_container(m));
+  return 0;
+}
+
+static int mpris_metadata(sd_bus *_bus, const char *_path,
+                          const char *_interface, const char *_property,
+                          sd_bus_message *reply, void *_userdata,
+                          sd_bus_error *_ret_error) {
+  CK(sd_bus_message_open_container(reply, 'a', "{sv}"));
+
+  if (user_selection.playing_song) {
+    char buf[256];
+    snprintf(buf, sizeof(buf), "/%s", user_selection.playing_song->id);
+    CK(mpris_msg_append_so_dict(reply, "mpris:trackid", buf));
+
+    int64_t dur = user_selection.playing_song->duration;
+    dur *= 1000 * 1000;
+    CK(mpris_msg_append_sx_dict(reply, "mpris:length", dur));
+
+    CK(mpris_msg_append_sas_dict(reply, "xesam:artist",
+                                 user_selection.artist->name));
+    CK(mpris_msg_append_ss_dict(reply, "xesam:title",
+                                user_selection.playing_song->title));
+    CK(mpris_msg_append_ss_dict(reply, "xesam:album",
+                                user_selection.album->title));
+    CK(mpris_msg_append_sas_dict(reply, "xesam:genre",
+                                 user_selection.album->genre));
+    // TODO: implement caching for the artUrl and save the image locally
+    char *call_param = malloc(
+        strlen("&id=") + strlen(user_selection.playing_song->cover_art) + 1);
+    sprintf(call_param, "&id=%s", user_selection.playing_song->cover_art);
+    char *art_url;
+    if (call_param)
+      art_url = url_formatter(server, "getCoverArt", call_param);
+    if (art_url)
+      CK(mpris_msg_append_ss_dict(reply, "mpris:artUrl", art_url));
+    free(call_param);
+    free(art_url);
   }
+  CK(sd_bus_message_close_container(reply));
+  return 0;
 }
 
-void on_name_acquired(GDBusConnection *connection, const gchar *name,
-                      gpointer user_data) {}
+#define MPRIS_PROP(name, type, read)                                           \
+  SD_BUS_PROPERTY(name, type, read, 0, SD_BUS_VTABLE_PROPERTY_EMITS_CHANGE)
 
-void on_name_lost(GDBusConnection *connection, const gchar *name,
-                  gpointer user_data) {
-  g_main_loop_quit((GMainLoop *)user_data);
-}
+#define MPRIS_WPROP(name, type, read, write)                                   \
+  SD_BUS_WRITABLE_PROPERTY(name, type, read, write, 0,                         \
+                           SD_BUS_VTABLE_PROPERTY_EMITS_CHANGE)
 
-static void
-handle_root_method_call(GDBusConnection *connection, const gchar *sender,
-                        const gchar *object_path, const gchar *interface_name,
-                        const gchar *method_name, GVariant *parameters,
-                        GDBusMethodInvocation *invocation, gpointer user_data) {
-
-  if (g_strcmp0(method_name, "Raise") == 0) {
-    // TODO: implement raise
-    g_dbus_method_invocation_return_value(invocation, NULL);
-  } else if (g_strcmp0(method_name, "Quit") == 0) {
-    // TODO: implement quit
-    g_dbus_method_invocation_return_value(invocation, NULL);
-    g_main_loop_quit((GMainLoop *)user_data);
-  }
-}
-
-// callback from system calls to player functions
-static void handle_player_method_call(
-    GDBusConnection *connection, const gchar *sender, const gchar *object_path,
-    const gchar *interface_name, const gchar *method_name, GVariant *parameters,
-    GDBusMethodInvocation *invocation, gpointer user_data) {
-
-  if (g_strcmp0(method_name, "Play") == 0)
-    play_player();
-  else if (g_strcmp0(method_name, "Pause") == 0)
-    pause_player();
-  else if (g_strcmp0(method_name, "PlayPause") == 0)
-    play_pause();
-  else if (g_strcmp0(method_name, "Next") == 0)
-    skip_song();
-  else if (g_strcmp0(method_name, "Previous") == 0)
-    previous_song();
-
-  g_dbus_method_invocation_return_value(invocation, NULL);
-}
-
-// properties getters
-static GVariant *handle_root_get_property(GDBusConnection *connection,
-                                          const gchar *sender,
-                                          const gchar *object_path,
-                                          const gchar *interface_name,
-                                          const gchar *property_name,
-                                          GError **error, gpointer user_data) {
-
-  if (g_strcmp0(property_name, "CanQuit") == 0) {
-    return g_variant_new_boolean(TRUE);
-  } else if (g_strcmp0(property_name, "CanRaise") == 0) {
-    return g_variant_new_boolean(TRUE);
-  } else if (g_strcmp0(property_name, "HasTrackList") == 0) {
-    return g_variant_new_boolean(FALSE);
-  } else if (g_strcmp0(property_name, "Identity") == 0) {
-    return g_variant_new_string("TMusicPlayer");
-  } else if (g_strcmp0(property_name, "SupportedUriSchemes") == 0) {
-    const gchar *schemes[] = {"file", "http", "https", NULL};
-    return g_variant_new_strv(schemes, -1);
-  } else if (g_strcmp0(property_name, "SupportedMimeTypes") == 0) {
-    // since subsonic api can return basically all formats i just include the
-    // most popular
-    const gchar *types[] = {"audio/mpeg", "audio/ogg", "audio/flac",
-                            "audio/wav",  "audio/aac", "audio/mp4",
-                            "audio/webm", NULL};
-    return g_variant_new_strv(types, -1);
-  }
-
-  return NULL;
-}
-
-static GVariant *handle_player_get_property(
-    GDBusConnection *connection, const gchar *sender, const gchar *object_path,
-    const gchar *interface_name, const gchar *property_name, GError **error,
-    gpointer user_data) {
-
-  if (g_strcmp0(property_name, "PlaybackStatus") == 0) {
-    return g_variant_new_string(mpris_ctx->playback_status);
-  } else if (g_strcmp0(property_name, "LoopStatus") == 0) {
-    return g_variant_new_string(mpris_ctx->loop_status);
-  } else if (g_strcmp0(property_name, "Volume") == 0) {
-    return g_variant_new_double(mpris_ctx->volume);
-  } else if (g_strcmp0(property_name, "Position") == 0) {
-    return g_variant_new_int64(mpris_ctx->position);
-  } else if (g_strcmp0(property_name, "CanGoNext") == 0) {
-    return g_variant_new_boolean(TRUE);
-  } else if (g_strcmp0(property_name, "CanGoPrevious") == 0) {
-    return g_variant_new_boolean(TRUE);
-  } else if (g_strcmp0(property_name, "CanPlay") == 0) {
-    return g_variant_new_boolean(TRUE);
-  } else if (g_strcmp0(property_name, "CanPause") == 0) {
-    return g_variant_new_boolean(TRUE);
-  } else if (g_strcmp0(property_name, "CanSeek") == 0) {
-    return g_variant_new_boolean(FALSE);
-  } else if (g_strcmp0(property_name, "CanControl") == 0) {
-    return g_variant_new_boolean(TRUE);
-  } else if (g_strcmp0(property_name, "Metadata") == 0) {
-
-    // building metadata for mpris
-    GVariantBuilder builder;
-    g_variant_builder_init(&builder, G_VARIANT_TYPE("a{sv}"));
-
-    if (user_selection.playing_song) {
-      size_t len = strlen(user_selection.playing_song->id) +
-                   strlen("/tmusicplayer/track/") + 1;
-      char *track_path = malloc(len);
-      snprintf(track_path, len, "/tmusicplayer/track/%s",
-               user_selection.playing_song->id);
-      g_variant_builder_add(&builder, "{sv}", "mpris:trackid",
-                            g_variant_new_object_path(track_path));
-      g_variant_builder_add(
-          &builder, "{sv}", "xesam:title",
-          g_variant_new_string(user_selection.playing_song->title));
-      g_variant_builder_add(
-          &builder, "{sv}", "mpris:length",
-          g_variant_new_int64(user_selection.playing_song->duration * 1000000));
-
-      char *call_param = malloc(
-          strlen("&id=") + strlen(user_selection.playing_song->cover_art) + 1);
-      sprintf(call_param, "&id=%s", user_selection.playing_song->cover_art);
-      char *art_url;
-      if (call_param)
-        art_url = url_formatter(server, "getCoverArt", call_param);
-      if (art_url) {
-        g_variant_builder_add(&builder, "{sv}", "mpris:artUrl",
-                              g_variant_new_string(art_url));
-        free(call_param);
-        free(art_url);
-      }
-      free(track_path);
-    }
-    if (user_selection.album)
-      g_variant_builder_add(&builder, "{sv}", "xesam:album",
-                            g_variant_new_string(user_selection.album->title));
-    if (user_selection.artist)
-      g_variant_builder_add(&builder, "{sv}", "xesam:artist",
-                            g_variant_new_string(user_selection.artist->name));
-
-    return g_variant_builder_end(&builder);
-  }
-
-  return NULL;
-}
-
-// properties setters
-static gboolean handle_player_set_property(
-    GDBusConnection *connection, const gchar *sender, const gchar *object_path,
-    const gchar *interface_name, const gchar *property_name, GVariant *value,
-    GError **error, gpointer user_data) {
-
-  if (g_strcmp0(property_name, "Volume") == 0) {
-    int volume = g_variant_get_double(value) * 100;
-    set_volume(volume);
-    return TRUE;
-  }
-
-  return FALSE;
-}
-
-// interface vtables
-static const GDBusInterfaceVTable root_interface_vtable = {
-    handle_root_method_call, handle_root_get_property,
-    NULL, // No settable properties
+static const sd_bus_vtable media_player2_vt[] = {
+    SD_BUS_VTABLE_START(0),
+    SD_BUS_METHOD("Quit", "", "", mpris_msg_ignore, 0),
+    MPRIS_PROP("CanQuit", "b", mpris_read_false),
+    MPRIS_WPROP("Fullscreen", "b", mpris_read_false, mpris_write_ignore),
+    MPRIS_PROP("CanSetFullscreen", "b", mpris_read_false),
+    MPRIS_PROP("CanRaise", "b", mpris_read_false),
+    MPRIS_PROP("HasTrackList", "b", mpris_read_false),
+    MPRIS_PROP("Identity", "s", mpris_identity),
+    MPRIS_PROP("SupportedUriSchemes", "as", mpris_uri_schemes),
+    MPRIS_PROP("SupportedMimeTypes", "as", mpris_mime_types),
+    SD_BUS_VTABLE_END,
 };
 
-static const GDBusInterfaceVTable player_interface_vtable = {
-    handle_player_method_call,
-    handle_player_get_property,
-    handle_player_set_property,
+static const sd_bus_vtable media_player2_player_vt[] = {
+    // TODO: implement shuffle
+    SD_BUS_VTABLE_START(0),
+    SD_BUS_METHOD("Next", "", "", mpris_next, 0),
+    SD_BUS_METHOD("Previous", "", "", mpris_prev, 0),
+    SD_BUS_METHOD("Pause", "", "", mpris_pause, 0),
+    SD_BUS_METHOD("PlayPause", "", "", mpris_toggle_pause, 0),
+    SD_BUS_METHOD("Stop", "", "", mpris_stop, 0),
+    SD_BUS_METHOD("Play", "", "", mpris_play, 0),
+    SD_BUS_METHOD("Seek", "x", "", mpris_seek, 0),
+    SD_BUS_METHOD("SetPosition", "ox", "", mpris_seek_abs, 0),
+    MPRIS_PROP("PlaybackStatus", "s", mpris_playback_status),
+    MPRIS_WPROP("LoopStatus", "s", mpris_loop_status, mpris_set_loop_status),
+    MPRIS_WPROP("Rate", "d", mpris_rate, mpris_write_ignore),
+    // MPRIS_WPROP("Shuffle", "b", mpris_shuffle, mpris_set_shuffle),
+    MPRIS_WPROP("Volume", "d", mpris_volume, mpris_set_volume),
+    SD_BUS_PROPERTY("Position", "x", mpris_position, 0, 0),
+    MPRIS_PROP("MinimumRate", "d", mpris_rate),
+    MPRIS_PROP("MaximumRate", "d", mpris_rate),
+    MPRIS_PROP("CanGoNext", "b", mpris_read_true),
+    MPRIS_PROP("CanGoPrevious", "b", mpris_read_true),
+    MPRIS_PROP("CanPlay", "b", mpris_read_true),
+    MPRIS_PROP("CanPause", "b", mpris_read_true),
+    MPRIS_PROP("CanSeek", "b", mpris_read_true),
+    SD_BUS_PROPERTY("CanControl", "b", mpris_read_true, 0, 0),
+    MPRIS_PROP("Metadata", "a{sv}", mpris_metadata),
+    SD_BUS_SIGNAL("Seeked", "x", 0),
+    SD_BUS_VTABLE_END,
 };
 
-void on_bus_acquired(GDBusConnection *connection, const gchar *name,
-                     gpointer user_data) {
-  GDBusNodeInfo *root_node_info, *player_node_info;
-  GMainLoop *loop = (GMainLoop *)user_data;
+void mpris_init(void) {
+  int res = 0;
 
-  // parsing interface definitions
-  root_node_info =
-      g_dbus_node_info_new_for_xml(mpris_root_xml, &mpris_ctx->error);
-  if (mpris_ctx->error) {
-    g_printerr("Failed to parse root interface: %s\n",
-               mpris_ctx->error->message);
-    g_error_free(mpris_ctx->error);
-    return;
+  res = sd_bus_default_user(&bus);
+  if (res < 0)
+    goto out;
+  res = sd_bus_add_object_vtable(bus, NULL, "/org/mpris/MediaPlayer2",
+                                 "org.mpris.MediaPlayer2", media_player2_vt,
+                                 NULL);
+  if (res < 0)
+    goto out;
+  res = sd_bus_add_object_vtable(bus, NULL, "/org/mpris/MediaPlayer2",
+                                 "org.mpris.MediaPlayer2.Player",
+                                 media_player2_player_vt, NULL);
+  if (res < 0)
+    goto out;
+  res = sd_bus_request_name(bus, "org.mpris.MediaPlayer2.tmusicplayer",
+                            SD_BUS_NAME_ALLOW_REPLACEMENT |
+                                SD_BUS_NAME_REPLACE_EXISTING);
+
+  mpris_fd = sd_bus_get_fd(bus);
+
+out:
+  if (res < 0) {
+    sd_bus_unref(bus);
+    bus = NULL;
+    mpris_fd = -1;
+
+    const char *msg = "an error occurred while initializing "
+                      "MPRIS: %s. MPRIS will be disabled.";
+
+    fprintf(stderr, msg, strerror(-res));
   }
-
-  player_node_info =
-      g_dbus_node_info_new_for_xml(mpris_player_xml, &mpris_ctx->error);
-  if (mpris_ctx->error) {
-    g_printerr("Failed to parse player interface: %s\n",
-               mpris_ctx->error->message);
-    g_error_free(mpris_ctx->error);
-    g_dbus_node_info_unref(root_node_info);
-    return;
-  }
-
-  // registering root interface
-  g_dbus_connection_register_object(
-      connection, "/org/mpris/MediaPlayer2", root_node_info->interfaces[0],
-      &root_interface_vtable, loop, NULL, &mpris_ctx->error);
-  if (mpris_ctx->error) {
-    g_printerr("Failed to register root interface: %s\n",
-               mpris_ctx->error->message);
-    g_error_free(mpris_ctx->error);
-  }
-
-  mpris_ctx->error = NULL;
-
-  // registering player interface
-  mpris_ctx->registration_id = g_dbus_connection_register_object(
-      connection, "/org/mpris/MediaPlayer2", player_node_info->interfaces[0],
-      &player_interface_vtable, loop, NULL, &mpris_ctx->error);
-
-  if (mpris_ctx->registration_id == 0) {
-    if (mpris_ctx->error != NULL) {
-      g_printerr("Failed to register player interface: %s\n",
-                 mpris_ctx->error->message);
-      g_error_free(mpris_ctx->error);
-      mpris_ctx->error = NULL;
-    } else
-      g_printerr("Failed to register player interface: unknown reason\n");
-
-    return;
-  }
-  mpris_ctx->connection = connection;
-
-  g_dbus_node_info_unref(root_node_info);
-  g_dbus_node_info_unref(player_node_info);
 }
 
-const char *convert_status(mpv_status_t status) {
+void mpris_process() {
+  if (bus) {
+    while (sd_bus_process(bus, NULL) > 0)
+      ;
+  }
+}
+
+void mpris_free() {
+  sd_bus_unref(bus);
+  bus = NULL;
+  mpris_fd = -1;
+}
+
+static void mpris_player_property_changed(const char *name) {
+  const char *const strv[] = {name, NULL};
+  if (bus) {
+    sd_bus_emit_properties_changed_strv(bus, "/org/mpris/MediaPlayer2",
+                                        "org.mpris.MediaPlayer2.Player",
+                                        (char **)strv);
+    sd_bus_flush(bus);
+  }
+}
+
+void mpris_playback_status_changed(void) {
+  mpris_player_property_changed("PlaybackStatus");
+}
+
+void mpris_loop_status_changed(void) {
+  mpris_player_property_changed("LoopStatus");
+}
+
+void mpris_shuffle_changed(void) { mpris_player_property_changed("Shuffle"); }
+
+void mpris_volume_changed(void) { mpris_player_property_changed("Volume"); }
+
+void mpris_metadata_changed(void) {
+  mpris_player_property_changed("Metadata");
+  // the following is not necessary according to the spec but some
+  // applications seem to disregard the spec and expect this to happen
+  mpris_seeked();
+}
+
+void mpris_seeked(void) {
+  if (!bus)
+    return;
+  int64_t pos = get_current_position();
+  sd_bus_emit_signal(bus, "/org/mpris/MediaPlayer2",
+                     "org.mpris.MediaPlayer2.Player", "Seeked", "x", pos);
+}
+
+char *convert_status(mpv_status_t status) {
   switch (status) {
   case MPV_STATUS_PLAYING:
     return "Playing";
@@ -326,29 +452,13 @@ const char *convert_status(mpv_status_t status) {
   }
 }
 
-void update_mpris_status(const char *status) {
-  g_free(mpris_ctx->playback_status);
-  mpris_ctx->playback_status = g_strdup(status);
-}
-
-gfloat update_mpris_volume(int volume) { return (float)volume / 100; }
-
-void update_mpris_position(double time) {
-  mpris_ctx->position = (gint64)(time * 1000000);
-}
-
-const char *convert_loop_status(loop_status_t status) {
+char *convert_loop_status(loop_status_t status) {
   switch (status) {
-  case NONE:
-    return "None";
   case QUEUE:
     return "Playlist";
   case TRACK:
     return "Track";
+  default:
+    return "None";
   }
-}
-
-void update_mpris_loop_status(const char *status) {
-  g_free(mpris_ctx->loop_status);
-  mpris_ctx->loop_status = g_strdup(status);
 }

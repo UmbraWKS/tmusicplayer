@@ -109,8 +109,11 @@ void handle_playback_restart_event() {
   if (status == MPV_STATUS_PAUSED)
     play_player();
 
-  status = MPV_STATUS_PLAYING;
-  status_changed = true;
+  // to prevent restart after the player is stopped
+  if (status != MPV_STATUS_STOPPED) {
+    status = MPV_STATUS_PLAYING;
+    status_changed = true;
+  }
 }
 
 void handle_time_pos_event(mpv_event_property *prop) {
@@ -126,8 +129,6 @@ void handle_time_pos_event(mpv_event_property *prop) {
     */
 
   bool jumped;
-
-  update_mpris_position(time_stamp);
 
   // i only care about seconds, so i am limiting function call to second
   // change only
@@ -175,8 +176,8 @@ void mpv_main_loop() {
     // calling when the status of the song playing changes
     if (status_changed) {
       playback_status(status);
-      update_mpris_status(convert_status(status));
       status_changed = false;
+      mpris_playback_status_changed();
     }
 
     mpv_event *event = mpv_wait_event(ctx, 1000);
@@ -221,13 +222,15 @@ void play_song(char *id) {
     Song *song = get_song_from_id(queue->songs, id);
     has_scrobbled = false;
     currently_playing(song);
+    // update mpris metadata with new song
+    mpris_metadata_changed();
   }
   free(params);
   free(url);
 }
 
 mpv_status_t get_mpv_status() { return status; }
-// volume change when ctx has not been created is not possible
+
 void volume_up() {
   const char **cmd;
   char vol_step[2];
@@ -241,7 +244,6 @@ void volume_up() {
     settings->volume = 100;
   }
   volume_update(settings->volume);
-  mpris_ctx->volume = update_mpris_volume(settings->volume);
   mpv_command_async(ctx, 0, cmd);
   pthread_mutex_unlock(&mpv_mutex);
 }
@@ -259,7 +261,6 @@ void volume_down() {
     settings->volume = 0;
   }
   volume_update(settings->volume);
-  mpris_ctx->volume = update_mpris_volume(settings->volume);
   mpv_command_async(ctx, 0, cmd);
   pthread_mutex_unlock(&mpv_mutex);
 }
@@ -273,7 +274,6 @@ void set_volume(int volume) {
     mpv_command_async(ctx, 0, cmd);
   }
   volume_update(volume);
-  mpris_ctx->volume = update_mpris_volume(volume);
   settings->volume = volume;
   pthread_mutex_unlock(&mpv_mutex);
 }
@@ -301,9 +301,8 @@ void play_pause() {
   pthread_mutex_unlock(&mpv_mutex);
   if (status == MPV_STATUS_PLAYING)
     status = MPV_STATUS_PAUSED;
-  else if (status == MPV_STATUS_PAUSED)
+  else if (status == MPV_STATUS_PAUSED || status == MPV_STATUS_STOPPED)
     status = MPV_STATUS_PLAYING;
-
   status_changed = true;
 }
 
@@ -327,6 +326,17 @@ void play_player() {
   pthread_mutex_unlock(&mpv_mutex);
   status = MPV_STATUS_PLAYING;
   status_changed = true;
+}
+
+void stop_player() {
+  pthread_mutex_lock(&mpv_mutex);
+  if (ctx) {
+    mpv_command(ctx, (const char *[]){"seek", "0", "absolute-percent", NULL});
+    mpv_command(ctx, (const char *[]){"set", "pause", "yes", NULL});
+    status = MPV_STATUS_STOPPED;
+    status_changed = true;
+  }
+  pthread_mutex_unlock(&mpv_mutex);
 }
 
 void shutdown_player() {
@@ -386,6 +396,22 @@ void seek_by_percent(uint8_t n) {
   pthread_mutex_unlock(&mpv_mutex);
 }
 
+void seek_absolute(int64_t position) {
+  if (position < 0) {
+    seek_by_percent(0);
+    return;
+  }
+  // if the position overflows thew duration of the song the skip happens
+  // automatically
+
+  char n_str[10];
+  snprintf(n_str, sizeof(n_str), "%li", position);
+  pthread_mutex_lock(&mpv_mutex);
+  const char *cmd[] = {"seek", n_str, "absolute", NULL};
+  mpv_command_async(ctx, 0, cmd);
+  pthread_mutex_unlock(&mpv_mutex);
+}
+
 static inline void check_error(int status) {
   if (status < 0) {
     // TODO: print to error window
@@ -400,3 +426,5 @@ uint64_t current_time_millis() {
   clock_gettime(CLOCK_REALTIME, &ts);
   return (uint64_t)ts.tv_sec * 1000 + (uint64_t)ts.tv_nsec / 1000000;
 }
+
+int64_t get_current_position() { return (int64_t)time_passed * 1000000; }

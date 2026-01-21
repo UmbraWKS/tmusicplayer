@@ -12,11 +12,11 @@
 - libxml2
 - mpv
 - pkg-config
-- glib2
 - gcc
 - make
+- systemd
 
-Note: on some distros the "devel" variant of the packages might be needed
+Note: on some distros the "devel" variant of the packages might be needed e.g.(Fedora)
 
 ## Compiling 
   
@@ -80,6 +80,8 @@ Note: on some distros the "devel" variant of the packages might be needed
 | `j`           | Skip backward                  |
 | `k`           | Skip forward                   |
 | `a`           | Add Album or Song to queue     |
+| `J`           | Back 10 seconds                |
+| `K`           | Forward 10 seconds             |
 
 
 ## Screenshots
